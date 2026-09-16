@@ -1,0 +1,32 @@
+export const typography = {
+  fontFamily: {
+    regular: 'Inter_400Regular',
+    medium: 'Inter_500Medium',
+    semiBold: 'Inter_600SemiBold',
+    bold: 'Inter_700Bold',
+  },
+  fontSize: {
+    hero: 40,
+    h1: 28,
+    h2: 24,
+    h3: 20,
+    h4: 18,
+    body: 16,
+    bodySmall: 14,
+    small: 14,
+    caption: 12,
+    tiny: 10,
+  },
+  lineHeight: {
+    hero: 48,
+    h1: 36,
+    h2: 32,
+    h3: 28,
+    h4: 24,
+    body: 24,
+    bodySmall: 20,
+    small: 20,
+    caption: 16,
+    tiny: 14,
+  },
+} as const;
