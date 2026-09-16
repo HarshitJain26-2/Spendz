@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import type { Account, AccountType } from '@/types';
-import { getDatabase, schema } from '@/database';
-import { eq } from 'drizzle-orm';
+import { repository } from '@/database';
 import { generateId, getTodayISO } from '@/utils/date';
 import { isOnlineAccount } from '@/constants/accountTypes';
 
@@ -34,28 +33,14 @@ export const useAccountStore = create<AccountState>((set, get) => ({
 
   loadAccounts: () => {
     try {
-      const db = getDatabase();
-      const results = db.select().from(schema.accounts).all();
-      set({
-        accounts: results.map((r) => ({
-          id: r.id,
-          name: r.name,
-          type: r.type as AccountType,
-          balance: r.balance,
-          icon: r.icon,
-          color: r.color,
-          isDefault: r.isDefault,
-          createdAt: r.createdAt,
-          updatedAt: r.updatedAt,
-        })),
-      });
+      const accounts = repository.getAccounts();
+      set({ accounts });
     } catch (e) {
       console.error('Failed to load accounts:', e);
     }
   },
 
   addAccount: (data) => {
-    const db = getDatabase();
     const now = getTodayISO();
     const account: Account = {
       id: generateId(),
@@ -69,22 +54,14 @@ export const useAccountStore = create<AccountState>((set, get) => ({
       updatedAt: now,
     };
 
-    db.insert(schema.accounts).values({
-      ...account,
-    }).run();
-
+    repository.addAccount(account);
     set((state) => ({ accounts: [...state.accounts, account] }));
     return account;
   },
 
   updateAccount: (id, data) => {
-    const db = getDatabase();
     const now = getTodayISO();
-
-    db.update(schema.accounts)
-      .set({ ...data, updatedAt: now } as any)
-      .where(eq(schema.accounts.id, id))
-      .run();
+    repository.updateAccount(id, { ...data, updatedAt: now });
 
     set((state) => ({
       accounts: state.accounts.map((a) =>
@@ -94,8 +71,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   },
 
   deleteAccount: (id) => {
-    const db = getDatabase();
-    db.delete(schema.accounts).where(eq(schema.accounts.id, id)).run();
+    repository.deleteAccount(id);
     set((state) => ({
       accounts: state.accounts.filter((a) => a.id !== id),
     }));

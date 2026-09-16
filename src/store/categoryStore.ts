@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import type { Category, CategoryType } from '@/types';
-import { getDatabase, schema } from '@/database';
-import { eq } from 'drizzle-orm';
+import { repository } from '@/database';
 import { generateId, getTodayISO } from '@/utils/date';
 
 interface CategoryState {
@@ -29,26 +28,14 @@ export const useCategoryStore = create<CategoryState>((set, get) => ({
 
   loadCategories: () => {
     try {
-      const db = getDatabase();
-      const results = db.select().from(schema.categories).all();
-      set({
-        categories: results.map((r) => ({
-          id: r.id,
-          name: r.name,
-          icon: r.icon,
-          color: r.color,
-          type: r.type as CategoryType,
-          isDefault: r.isDefault,
-          createdAt: r.createdAt,
-        })),
-      });
+      const categories = repository.getCategories();
+      set({ categories });
     } catch (e) {
       console.error('Failed to load categories:', e);
     }
   },
 
   addCategory: (data) => {
-    const db = getDatabase();
     const now = getTodayISO();
     const category: Category = {
       id: generateId(),
@@ -57,18 +44,13 @@ export const useCategoryStore = create<CategoryState>((set, get) => ({
       createdAt: now,
     };
 
-    db.insert(schema.categories).values(category).run();
+    repository.addCategory(category);
     set((state) => ({ categories: [...state.categories, category] }));
     return category;
   },
 
   updateCategory: (id, data) => {
-    const db = getDatabase();
-    db.update(schema.categories)
-      .set(data as any)
-      .where(eq(schema.categories.id, id))
-      .run();
-
+    repository.updateCategory(id, data);
     set((state) => ({
       categories: state.categories.map((c) =>
         c.id === id ? { ...c, ...data } : c
@@ -77,8 +59,7 @@ export const useCategoryStore = create<CategoryState>((set, get) => ({
   },
 
   deleteCategory: (id) => {
-    const db = getDatabase();
-    db.delete(schema.categories).where(eq(schema.categories.id, id)).run();
+    repository.deleteCategory(id);
     set((state) => ({
       categories: state.categories.filter((c) => c.id !== id),
     }));

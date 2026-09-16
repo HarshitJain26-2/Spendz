@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import type { Friend } from '@/types';
-import { getDatabase, schema } from '@/database';
-import { eq } from 'drizzle-orm';
+import { repository } from '@/database';
 import { generateId, getTodayISO } from '@/utils/date';
 
 const AVATAR_COLORS = [
@@ -26,24 +25,14 @@ export const useFriendStore = create<FriendState>((set, get) => ({
 
   loadFriends: () => {
     try {
-      const db = getDatabase();
-      const results = db.select().from(schema.friends).all();
-      set({
-        friends: results.map((r) => ({
-          id: r.id,
-          name: r.name,
-          phone: r.phone,
-          avatarColor: r.avatarColor,
-          createdAt: r.createdAt,
-        })),
-      });
+      const friends = repository.getFriends();
+      set({ friends });
     } catch (e) {
       console.error('Failed to load friends:', e);
     }
   },
 
   addFriend: (data) => {
-    const db = getDatabase();
     const now = getTodayISO();
     const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 
@@ -55,18 +44,13 @@ export const useFriendStore = create<FriendState>((set, get) => ({
       createdAt: now,
     };
 
-    db.insert(schema.friends).values(friend).run();
+    repository.addFriend(friend);
     set((state) => ({ friends: [...state.friends, friend] }));
     return friend;
   },
 
   updateFriend: (id, data) => {
-    const db = getDatabase();
-    db.update(schema.friends)
-      .set(data as any)
-      .where(eq(schema.friends.id, id))
-      .run();
-
+    repository.updateFriend(id, data);
     set((state) => ({
       friends: state.friends.map((f) =>
         f.id === id ? { ...f, ...data } : f
@@ -75,8 +59,7 @@ export const useFriendStore = create<FriendState>((set, get) => ({
   },
 
   deleteFriend: (id) => {
-    const db = getDatabase();
-    db.delete(schema.friends).where(eq(schema.friends.id, id)).run();
+    repository.deleteFriend(id);
     set((state) => ({
       friends: state.friends.filter((f) => f.id !== id),
     }));

@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import type { SplitExpense, SplitParticipant, SplitMethod, SplitStatus } from '@/types';
-import { getDatabase, schema } from '@/database';
-import { eq } from 'drizzle-orm';
+import { repository } from '@/database';
 import { generateId, getTodayISO } from '@/utils/date';
 
 interface SplitState {
@@ -31,30 +30,7 @@ export const useSplitStore = create<SplitState>((set, get) => ({
 
   loadSplitExpenses: () => {
     try {
-      const db = getDatabase();
-      const splits = db.select().from(schema.splitExpenses).all();
-      const participants = db.select().from(schema.splitParticipants).all();
-
-      const splitExpenses: SplitExpense[] = splits.map((s) => ({
-        id: s.id,
-        transactionId: s.transactionId,
-        totalAmount: s.totalAmount,
-        splitMethod: s.splitMethod as SplitMethod,
-        status: s.status as SplitStatus,
-        createdAt: s.createdAt,
-        participants: participants
-          .filter((p) => p.splitExpenseId === s.id)
-          .map((p) => ({
-            id: p.id,
-            splitExpenseId: p.splitExpenseId,
-            friendId: p.friendId,
-            name: p.name,
-            amount: p.amount,
-            isPaid: p.isPaid,
-            settledAt: p.settledAt,
-          })),
-      }));
-
+      const splitExpenses = repository.getSplitExpenses();
       set({ splitExpenses });
     } catch (e) {
       console.error('Failed to load split expenses:', e);
@@ -62,9 +38,18 @@ export const useSplitStore = create<SplitState>((set, get) => ({
   },
 
   addSplitExpense: (data) => {
-    const db = getDatabase();
     const now = getTodayISO();
     const splitId = generateId();
+
+    const participantRecords: SplitParticipant[] = data.participants.map((p) => ({
+      id: generateId(),
+      splitExpenseId: splitId,
+      friendId: p.friendId,
+      name: p.name,
+      amount: p.amount,
+      isPaid: p.friendId === null, // "you" are automatically paid
+      settledAt: p.friendId === null ? now : null,
+    }));
 
     const splitExpense: SplitExpense = {
       id: splitId,
@@ -73,36 +58,20 @@ export const useSplitStore = create<SplitState>((set, get) => ({
       splitMethod: data.splitMethod,
       status: 'pending',
       createdAt: now,
-      participants: [],
+      participants: participantRecords,
     };
 
-    db.insert(schema.splitExpenses)
-      .values({
+    repository.addSplitExpense(
+      {
         id: splitId,
         transactionId: data.transactionId,
         totalAmount: data.totalAmount,
         splitMethod: data.splitMethod,
         status: 'pending',
         createdAt: now,
-      })
-      .run();
-
-    const participantRecords: SplitParticipant[] = data.participants.map((p) => {
-      const participant: SplitParticipant = {
-        id: generateId(),
-        splitExpenseId: splitId,
-        friendId: p.friendId,
-        name: p.name,
-        amount: p.amount,
-        isPaid: p.friendId === null, // "you" are automatically paid
-        settledAt: p.friendId === null ? now : null,
-      };
-
-      db.insert(schema.splitParticipants).values(participant).run();
-      return participant;
-    });
-
-    splitExpense.participants = participantRecords;
+      },
+      participantRecords
+    );
 
     set((state) => ({
       splitExpenses: [...state.splitExpenses, splitExpense],
@@ -112,49 +81,38 @@ export const useSplitStore = create<SplitState>((set, get) => ({
   },
 
   settleSplitParticipant: (splitExpenseId, participantId) => {
-    const db = getDatabase();
     const now = getTodayISO();
+    const split = get().splitExpenses.find((s) => s.id === splitExpenseId);
+    if (!split) return;
 
-    db.update(schema.splitParticipants)
-      .set({ isPaid: true, settledAt: now })
-      .where(eq(schema.splitParticipants.id, participantId))
-      .run();
+    const updatedParticipants = split.participants?.map((p) =>
+      p.id === participantId
+        ? { ...p, isPaid: true, settledAt: now }
+        : p
+    );
 
-    set((state) => {
-      const updated = state.splitExpenses.map((split) => {
-        if (split.id !== splitExpenseId) return split;
+    const allPaid = updatedParticipants?.every((p) => p.isPaid);
+    const somePaid = updatedParticipants?.some((p) => p.isPaid);
 
-        const updatedParticipants = split.participants?.map((p) =>
-          p.id === participantId
-            ? { ...p, isPaid: true, settledAt: now }
-            : p
-        );
+    const newStatus: SplitStatus = allPaid
+      ? 'settled'
+      : somePaid
+        ? 'partial'
+        : 'pending';
 
-        const allPaid = updatedParticipants?.every((p) => p.isPaid);
-        const somePaid = updatedParticipants?.some((p) => p.isPaid);
+    repository.settleSplitParticipant(splitExpenseId, participantId, now, newStatus);
 
-        const newStatus: SplitStatus = allPaid
-          ? 'settled'
-          : somePaid
-            ? 'partial'
-            : 'pending';
-
-        if (newStatus !== split.status) {
-          db.update(schema.splitExpenses)
-            .set({ status: newStatus })
-            .where(eq(schema.splitExpenses.id, splitExpenseId))
-            .run();
-        }
-
-        return {
-          ...split,
-          status: newStatus,
-          participants: updatedParticipants,
-        };
-      });
-
-      return { splitExpenses: updated };
-    });
+    set((state) => ({
+      splitExpenses: state.splitExpenses.map((s) =>
+        s.id === splitExpenseId
+          ? {
+              ...s,
+              status: newStatus,
+              participants: updatedParticipants,
+            }
+          : s
+      ),
+    }));
   },
 
   getSplitsByFriend: (friendId) => {

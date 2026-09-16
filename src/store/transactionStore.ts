@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import type { Transaction, TransactionType, MonthSummary } from '@/types';
-import { getDatabase, schema } from '@/database';
-import { eq, desc, and, gte, lte, like } from 'drizzle-orm';
+import { repository } from '@/database';
 import { generateId, getTodayISO, getMonthKey, getCurrentMonthRange } from '@/utils/date';
 import { useAccountStore } from './accountStore';
 
@@ -34,34 +33,14 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
 
   loadTransactions: () => {
     try {
-      const db = getDatabase();
-      const results = db
-        .select()
-        .from(schema.transactions)
-        .orderBy(desc(schema.transactions.date))
-        .all();
-
-      set({
-        transactions: results.map((r) => ({
-          id: r.id,
-          type: r.type as TransactionType,
-          amount: r.amount,
-          categoryId: r.categoryId,
-          accountId: r.accountId,
-          toAccountId: r.toAccountId,
-          note: r.note,
-          date: r.date,
-          createdAt: r.createdAt,
-          updatedAt: r.updatedAt,
-        })),
-      });
+      const transactions = repository.getTransactions();
+      set({ transactions });
     } catch (e) {
       console.error('Failed to load transactions:', e);
     }
   },
 
   addTransaction: (data) => {
-    const db = getDatabase();
     const now = getTodayISO();
     const transaction: Transaction = {
       id: generateId(),
@@ -76,7 +55,7 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       updatedAt: now,
     };
 
-    db.insert(schema.transactions).values(transaction).run();
+    repository.addTransaction(transaction);
 
     // Update account balances
     const accountStore = useAccountStore.getState();
@@ -103,7 +82,6 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   },
 
   updateTransaction: (id, data) => {
-    const db = getDatabase();
     const now = getTodayISO();
 
     // Get existing transaction to reverse its balance effect
@@ -130,10 +108,7 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
 
     const updated = { ...existing, ...data, updatedAt: now };
 
-    db.update(schema.transactions)
-      .set({ ...data, updatedAt: now } as any)
-      .where(eq(schema.transactions.id, id))
-      .run();
+    repository.updateTransaction(id, { ...data, updatedAt: now });
 
     // Apply new balance effect
     switch (updated.type) {
@@ -162,7 +137,6 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     const existing = get().transactions.find((t) => t.id === id);
     if (!existing) return;
 
-    const db = getDatabase();
     const accountStore = useAccountStore.getState();
 
     // Reverse balance effect
@@ -181,9 +155,7 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
         break;
     }
 
-    db.delete(schema.transactions)
-      .where(eq(schema.transactions.id, id))
-      .run();
+    repository.deleteTransaction(id);
 
     set((state) => ({
       transactions: state.transactions.filter((t) => t.id !== id),
