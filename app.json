@@ -17,6 +17,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "package": "com.harshitjain.spendz",
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -46,6 +47,18 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {
+        "headers": {
+          "Cross-Origin-Embedder-Policy": "credentialless",
+          "Cross-Origin-Opener-Policy": "same-origin"
+        }
+      },
+      "eas": {
+        "projectId": "88e47163-a0d1-499e-ac4e-b01709f163df"
+      }
+    },
+    "owner": "harshitjain262"
   }
 }
