@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Account, AccountType } from '@/types';
 import { repository } from '@/database';
 import { generateId, getTodayISO } from '@/utils/date';
-import { isOnlineAccount } from '@/constants/accountTypes';
+import { isCashAccount, isOnlineAccount } from '@/constants/accountTypes';
 
 interface AccountState {
   accounts: Account[];
@@ -86,18 +86,18 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   },
 
   getTotalBalance: () => {
-    return get().accounts.reduce((sum, a) => sum + a.balance, 0);
+    return get().accounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
   },
 
   getCashBalance: () => {
     return get()
-      .accounts.filter((a) => a.type === 'cash')
-      .reduce((sum, a) => sum + a.balance, 0);
+      .accounts.filter((a) => isCashAccount(a.type))
+      .reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
   },
 
   getOnlineBalance: () => {
     return get()
       .accounts.filter((a) => isOnlineAccount(a.type))
-      .reduce((sum, a) => sum + a.balance, 0);
+      .reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
   },
 }));

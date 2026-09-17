@@ -12,7 +12,7 @@ import { FAB } from '@/components/ui/FAB';
 import { useAppStore } from '@/store/appStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useTransactionStore } from '@/store/transactionStore';
-import { isOnlineAccount } from '@/constants/accountTypes';
+import { isCashAccount, isOnlineAccount } from '@/constants/accountTypes';
 import { getCurrentMonthRange } from '@/utils/date';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
@@ -29,12 +29,12 @@ export default function HomeScreen() {
     let cash = 0;
     let online = 0;
     for (const a of accounts) {
-      total += a.balance;
-      if (a.type === 'cash') {
-        cash += a.balance;
-      }
-      if (isOnlineAccount(a.type)) {
-        online += a.balance;
+      const balance = Number(a.balance) || 0;
+      total += balance;
+      if (isCashAccount(a.type)) {
+        cash += balance;
+      } else {
+        online += balance;
       }
     }
     return { totalBalance: total, cashBalance: cash, onlineBalance: online };

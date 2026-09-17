@@ -50,7 +50,12 @@ export const getAccountTypeConfig = (type: AccountType): AccountTypeConfig => {
   return ACCOUNT_TYPES.find((t) => t.type === type) ?? ACCOUNT_TYPES[4];
 };
 
-/** Returns true if this account type represents "online" money */
-export const isOnlineAccount = (type: AccountType): boolean => {
-  return type === 'bank' || type === 'wallet' || type === 'card';
+/** Returns true if this account type represents physical cash */
+export const isCashAccount = (type: string): boolean => {
+  return (type || '').toLowerCase().trim() === 'cash';
+};
+
+/** Returns true if this account type represents "online" / non-physical money */
+export const isOnlineAccount = (type: string): boolean => {
+  return !isCashAccount(type);
 };
