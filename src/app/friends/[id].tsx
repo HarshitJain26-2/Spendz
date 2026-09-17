@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,18 +26,36 @@ import { Button } from '@/components/ui/Button';
 import { formatCurrency } from '@/utils/currency';
 import { formatRelativeDate } from '@/utils/date';
 import { typography } from '@/theme/typography';
-import { spacing } from '@/theme/spacing';
+import { spacing, borderRadius } from '@/theme/spacing';
 
 export default function FriendDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { colors } = useTheme();
 
-  const friend = useFriendStore((s) => s.getFriendById(id));
+  const friends = useFriendStore((s) => s.friends);
+  const friend = useMemo(
+    () => friends.find((f) => f.id === id),
+    [friends, id]
+  );
   const deleteFriend = useFriendStore((s) => s.deleteFriend);
+  const splitExpenses = useSplitStore((s) => s.splitExpenses);
   const getFriendBalance = useSplitStore((s) => s.getFriendBalance);
-  const getSplitsByFriend = useSplitStore((s) => s.getSplitsByFriend);
   const transactions = useTransactionStore((s) => s.transactions);
+
+  const balance = useMemo(
+    () => (friend ? getFriendBalance(friend.id) : 0),
+    [friend, splitExpenses, getFriendBalance]
+  );
+  const splits = useMemo(
+    () =>
+      friend
+        ? splitExpenses.filter((split) =>
+            split.participants?.some((p) => p.friendId === friend.id)
+          )
+        : [],
+    [friend, splitExpenses]
+  );
 
   if (!friend) {
     return (
@@ -55,9 +73,6 @@ export default function FriendDetailScreen() {
       </SafeAreaView>
     );
   }
-
-  const balance = getFriendBalance(friend.id);
-  const splits = getSplitsByFriend(friend.id);
 
   const handleDelete = () => {
     Alert.alert(

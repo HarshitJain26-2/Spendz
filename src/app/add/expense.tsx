@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,11 @@ export default function AddExpenseScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const addTransaction = useTransactionStore((s) => s.addTransaction);
-  const expenseCategories = useCategoryStore((s) => s.getExpenseCategories());
+  const categories = useCategoryStore((s) => s.categories);
+  const expenseCategories = useMemo(
+    () => categories.filter((c) => c.type === 'expense'),
+    [categories]
+  );
   const accounts = useAccountStore((s) => s.accounts);
 
   const [amount, setAmount] = useState('');

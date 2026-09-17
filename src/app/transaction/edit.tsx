@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -28,8 +28,10 @@ export default function EditTransactionScreen() {
   const router = useRouter();
   const { colors } = useTheme();
 
-  const transaction = useTransactionStore((s) =>
-    s.transactions.find((t) => t.id === id)
+  const transactions = useTransactionStore((s) => s.transactions);
+  const transaction = useMemo(
+    () => transactions.find((t) => t.id === id),
+    [transactions, id]
   );
   const updateTransaction = useTransactionStore((s) => s.updateTransaction);
   const categories = useCategoryStore((s) => s.categories);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -43,13 +43,19 @@ export default function TransactionDetailScreen() {
   const router = useRouter();
   const { colors } = useTheme();
 
-  const transaction = useTransactionStore((s) =>
-    s.transactions.find((t) => t.id === id)
+  const transactions = useTransactionStore((s) => s.transactions);
+  const transaction = useMemo(
+    () => transactions.find((t) => t.id === id),
+    [transactions, id]
   );
   const deleteTransaction = useTransactionStore((s) => s.deleteTransaction);
   const getCategoryById = useCategoryStore((s) => s.getCategoryById);
   const accounts = useAccountStore((s) => s.accounts);
-  const splitExpense = useSplitStore((s) => s.getSplitByTransactionId(id));
+  const splitExpenses = useSplitStore((s) => s.splitExpenses);
+  const splitExpense = useMemo(
+    () => splitExpenses.find((s) => s.transactionId === id),
+    [splitExpenses, id]
+  );
 
   if (!transaction) {
     return (

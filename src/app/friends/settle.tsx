@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,8 +27,19 @@ export default function SettleScreen() {
   const router = useRouter();
   const { colors } = useTheme();
 
-  const friend = useFriendStore((s) => s.getFriendById(friendId));
-  const splits = useSplitStore((s) => s.getSplitsByFriend(friendId));
+  const friends = useFriendStore((s) => s.friends);
+  const friend = useMemo(
+    () => friends.find((f) => f.id === friendId),
+    [friends, friendId]
+  );
+  const splitExpenses = useSplitStore((s) => s.splitExpenses);
+  const splits = useMemo(
+    () =>
+      splitExpenses.filter((split) =>
+        split.participants?.some((p) => p.friendId === friendId)
+      ),
+    [splitExpenses, friendId]
+  );
   const settleSplitParticipant = useSplitStore(
     (s) => s.settleSplitParticipant
   );

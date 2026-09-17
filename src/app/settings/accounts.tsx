@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -23,7 +23,10 @@ export default function AccountsManagementScreen() {
   const { colors } = useTheme();
   const accounts = useAccountStore((s) => s.accounts);
   const deleteAccount = useAccountStore((s) => s.deleteAccount);
-  const totalBalance = useAccountStore((s) => s.getTotalBalance());
+  const totalBalance = useMemo(
+    () => accounts.reduce((sum, a) => sum + a.balance, 0),
+    [accounts]
+  );
 
   const handleDelete = (id: string, name: string) => {
     if (accounts.length <= 1) {

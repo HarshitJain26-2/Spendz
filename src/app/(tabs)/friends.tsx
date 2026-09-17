@@ -22,6 +22,7 @@ export default function FriendsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const friends = useFriendStore((s) => s.friends);
+  const splitExpenses = useSplitStore((s) => s.splitExpenses);
   const getFriendBalance = useSplitStore((s) => s.getFriendBalance);
 
   // Compute friend balances and total summary
@@ -45,7 +46,7 @@ export default function FriendsScreen() {
       totalOwed: owed,
       totalOwe: owe,
     };
-  }, [friends, getFriendBalance]);
+  }, [friends, splitExpenses, getFriendBalance]);
 
   return (
     <SafeAreaView

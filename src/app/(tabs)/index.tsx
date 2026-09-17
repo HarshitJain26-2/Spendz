@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +12,8 @@ import { FAB } from '@/components/ui/FAB';
 import { useAppStore } from '@/store/appStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useTransactionStore } from '@/store/transactionStore';
+import { isOnlineAccount } from '@/constants/accountTypes';
+import { getCurrentMonthRange } from '@/utils/date';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 
@@ -19,12 +21,50 @@ export default function HomeScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const userProfile = useAppStore((s) => s.userProfile);
-  const totalBalance = useAccountStore((s) => s.getTotalBalance());
-  const cashBalance = useAccountStore((s) => s.getCashBalance());
-  const onlineBalance = useAccountStore((s) => s.getOnlineBalance());
-  const monthSummary = useTransactionStore((s) => s.getCurrentMonthSummary());
-  const recentTransactions = useTransactionStore((s) =>
-    s.getRecentTransactions(5)
+  const accounts = useAccountStore((s) => s.accounts);
+  const transactions = useTransactionStore((s) => s.transactions);
+
+  const { totalBalance, cashBalance, onlineBalance } = useMemo(() => {
+    let total = 0;
+    let cash = 0;
+    let online = 0;
+    for (const a of accounts) {
+      total += a.balance;
+      if (a.type === 'cash') {
+        cash += a.balance;
+      }
+      if (isOnlineAccount(a.type)) {
+        online += a.balance;
+      }
+    }
+    return { totalBalance: total, cashBalance: cash, onlineBalance: online };
+  }, [accounts]);
+
+  const monthSummary = useMemo(() => {
+    const { start, end } = getCurrentMonthRange();
+    const monthTransactions = transactions.filter((t) => {
+      const d = new Date(t.date);
+      return d >= start && d <= end;
+    });
+
+    const income = monthTransactions
+      .filter((t) => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const expense = monthTransactions
+      .filter((t) => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    return {
+      income,
+      expense,
+      saved: income - expense,
+    };
+  }, [transactions]);
+
+  const recentTransactions = useMemo(
+    () => transactions.slice(0, 5),
+    [transactions]
   );
 
   const greeting = userProfile.name

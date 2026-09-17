@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,11 @@ export default function AddIncomeScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const addTransaction = useTransactionStore((s) => s.addTransaction);
-  const incomeCategories = useCategoryStore((s) => s.getIncomeCategories());
+  const categories = useCategoryStore((s) => s.categories);
+  const incomeCategories = useMemo(
+    () => categories.filter((c) => c.type === 'income'),
+    [categories]
+  );
   const accounts = useAccountStore((s) => s.accounts);
 
   const [amount, setAmount] = useState('');

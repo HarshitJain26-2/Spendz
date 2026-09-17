@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -36,7 +36,11 @@ export default function AddSplitScreen() {
   const { colors } = useTheme();
   const addTransaction = useTransactionStore((s) => s.addTransaction);
   const addSplitExpense = useSplitStore((s) => s.addSplitExpense);
-  const expenseCategories = useCategoryStore((s) => s.getExpenseCategories());
+  const categories = useCategoryStore((s) => s.categories);
+  const expenseCategories = useMemo(
+    () => categories.filter((c) => c.type === 'expense'),
+    [categories]
+  );
   const accounts = useAccountStore((s) => s.accounts);
   const friends = useFriendStore((s) => s.friends);
   const addFriend = useFriendStore((s) => s.addFriend);
