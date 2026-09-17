@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   TextInput,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -281,14 +282,11 @@ export default function SettingsScreen() {
         >
           <View style={styles.infoRow}>
             <View style={styles.menuLeft}>
-              <View
-                style={[
-                  styles.menuIcon,
-                  { backgroundColor: colors.textTertiary + '15' },
-                ]}
-              >
-                <Info size={18} color={colors.textSecondary} />
-              </View>
+              <Image
+                source={require('@/assets/images/spendz-logo.png')}
+                style={styles.aboutLogo}
+                resizeMode="contain"
+              />
               <View>
                 <Text
                   style={[styles.menuTitle, { color: colors.textPrimary }]}
@@ -418,6 +416,11 @@ const styles = StyleSheet.create({
   menuSub: {
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.caption,
+  },
+  aboutLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
   },
   divider: {
     height: 1,

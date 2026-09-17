@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import {
   useFonts,
   Inter_400Regular,
@@ -20,6 +20,9 @@ import { useSplitStore } from '@/store/splitStore';
 import { useTheme } from '@/hooks/useTheme';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
+import { initAlertPolyfill } from '@/utils/alert';
+
+initAlertPolyfill();
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // Ignore splash screen errors on platforms where it's not supported
@@ -113,14 +116,19 @@ export default function RootLayout() {
           { backgroundColor: themeColors.background },
         ]}
       >
-        <Text style={[styles.brandTitle, { color: themeColors.accent }]}>
+        <Image
+          source={require('@/assets/images/spendz-logo.png')}
+          style={styles.loadingLogo}
+          resizeMode="contain"
+        />
+        <Text style={[styles.brandTitle, { color: themeColors.textPrimary }]}>
           Spendz
         </Text>
         <Text style={[styles.brandSubtitle, { color: themeColors.textSecondary }]}>
           Preparing your data...
         </Text>
         <ActivityIndicator
-          size="large"
+          size="small"
           color={themeColors.accent}
           style={styles.spinner}
         />
@@ -162,6 +170,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: spacing['2xl'],
+  },
+  loadingLogo: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    marginBottom: spacing.lg,
   },
   brandTitle: {
     fontFamily: typography.fontFamily.bold,

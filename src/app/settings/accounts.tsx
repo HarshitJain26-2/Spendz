@@ -15,6 +15,7 @@ import { useAccountStore } from '@/store/accountStore';
 import { DynamicIcon } from '@/components/ui/DynamicIcon';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency } from '@/utils/currency';
+import { showAlert } from '@/utils/alert';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
 
@@ -30,14 +31,14 @@ export default function AccountsManagementScreen() {
 
   const handleDelete = (id: string, name: string) => {
     if (accounts.length <= 1) {
-      Alert.alert(
+      showAlert(
         'Cannot Delete',
         'You must keep at least one active account for your transactions.'
       );
       return;
     }
 
-    Alert.alert(
+    showAlert(
       'Delete Account',
       `Are you sure you want to delete ${name}? This action cannot be undone.`,
       [

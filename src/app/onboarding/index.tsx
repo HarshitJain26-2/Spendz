@@ -1,12 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   FadeInDown,
   FadeInUp,
 } from 'react-native-reanimated';
-import { Wallet } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { Button } from '@/components/ui/Button';
 import { typography } from '@/theme/typography';
@@ -21,12 +20,16 @@ export default function WelcomeScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
     >
       <View style={styles.content}>
-        {/* Hero Icon */}
+        {/* Spendz Logo */}
         <Animated.View
           entering={FadeInDown.delay(200).duration(600)}
-          style={[styles.iconContainer, { backgroundColor: colors.accentLight }]}
+          style={styles.logoContainer}
         >
-          <Wallet size={48} color={colors.accent} strokeWidth={1.5} />
+          <Image
+            source={require('@/assets/images/spendz-logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
         </Animated.View>
 
         {/* Title */}
@@ -39,7 +42,7 @@ export default function WelcomeScreen() {
         {/* Tagline */}
         <Animated.View entering={FadeInDown.delay(600).duration(600)}>
           <Text style={[styles.tagline, { color: colors.accent }]}>
-            Know your money.
+            Track. Split. Spend smart.
           </Text>
         </Animated.View>
 
@@ -77,13 +80,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing['3xl'],
   },
-  iconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+  logoContainer: {
+    marginBottom: spacing['2xl'],
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing['3xl'],
+    shadowColor: '#00C9A7',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    borderRadius: 28,
   },
   title: {
     fontFamily: typography.fontFamily.bold,

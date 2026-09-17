@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { Plus } from 'lucide-react-native';
+import { Plus, Settings } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { BalanceCard } from '@/components/home/BalanceCard';
 import { MonthSummaryCard } from '@/components/home/MonthSummary';
@@ -80,6 +80,30 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
+        {/* Brand Header */}
+        <Animated.View
+          entering={FadeIn.delay(50).duration(500)}
+          style={styles.headerRow}
+        >
+          <View style={styles.brandContainer}>
+            <Image
+              source={require('@/assets/images/spendz-logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+            <Text style={[styles.brandName, { color: colors.textPrimary }]}>
+              Spendz
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs)/settings')}
+            style={[styles.settingsBtn, { backgroundColor: colors.surfaceElevated }]}
+            activeOpacity={0.7}
+          >
+            <Settings size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </Animated.View>
+
         {/* Greeting */}
         <Animated.View entering={FadeIn.delay(100).duration(500)}>
           <Text style={[styles.greeting, { color: colors.textPrimary }]}>
@@ -129,10 +153,38 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing['6xl'],
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  brandContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  logo: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+  },
+  brandName: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.h3,
+    letterSpacing: -0.5,
+  },
+  settingsBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   greeting: {
     fontFamily: typography.fontFamily.semiBold,
     fontSize: typography.fontSize.h2,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   fab: {
     position: 'absolute',

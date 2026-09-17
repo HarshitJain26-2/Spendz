@@ -37,6 +37,7 @@ import { formatCurrency } from '@/utils/currency';
 import { formatFullDateTime } from '@/utils/date';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
+import { showAlert } from '@/utils/alert';
 
 export default function TransactionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -85,7 +86,7 @@ export default function TransactionDetailScreen() {
     : null;
 
   const handleDelete = () => {
-    Alert.alert(
+    showAlert(
       'Delete Transaction',
       'Are you sure you want to delete this transaction? This will reverse its effect on your account balances.',
       [

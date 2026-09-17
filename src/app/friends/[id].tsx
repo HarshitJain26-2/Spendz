@@ -27,6 +27,7 @@ import { formatCurrency } from '@/utils/currency';
 import { formatRelativeDate } from '@/utils/date';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
+import { showAlert } from '@/utils/alert';
 
 export default function FriendDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -75,7 +76,7 @@ export default function FriendDetailScreen() {
   }
 
   const handleDelete = () => {
-    Alert.alert(
+    showAlert(
       'Delete Friend',
       `Are you sure you want to delete ${friend.name}? This will remove them from your friends list.`,
       [

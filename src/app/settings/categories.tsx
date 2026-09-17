@@ -15,6 +15,7 @@ import { useCategoryStore } from '@/store/categoryStore';
 import { DynamicIcon } from '@/components/ui/DynamicIcon';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
+import { showAlert } from '@/utils/alert';
 import type { CategoryType } from '@/types';
 
 export default function CategoriesManagementScreen() {
@@ -28,7 +29,7 @@ export default function CategoriesManagementScreen() {
   const filteredCategories = categories.filter((c) => c.type === activeTab);
 
   const handleDelete = (id: string, name: string) => {
-    Alert.alert(
+    showAlert(
       'Delete Category',
       `Are you sure you want to delete ${name}?`,
       [
