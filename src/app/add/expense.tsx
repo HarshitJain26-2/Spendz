@@ -6,9 +6,10 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, RotateCcw, Zap } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { Avatar } from '@/components/ui/Avatar';
@@ -29,6 +30,7 @@ import { borderRadius, spacing, shadows } from '@/theme/spacing';
 
 export default function AddExpenseScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const userProfile = useAppStore((s) => s.userProfile);
 
@@ -140,6 +142,7 @@ export default function AddExpenseScreen() {
       </View>
 
       <ScrollView
+        style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -309,7 +312,15 @@ export default function AddExpenseScreen() {
       </ScrollView>
 
       {/* 9. Bottom Save CTA Action */}
-      <View style={[styles.bottomBar, { backgroundColor: colors.background }]}>
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor: colors.background,
+            paddingBottom: Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8),
+          },
+        ]}
+      >
         <TouchableOpacity
           onPress={handleSubmit}
           disabled={!isValid}
@@ -383,8 +394,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: typography.fontFamily.bold,
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: spacing.lg,
     gap: spacing.md,
   },
   subHeader: {
@@ -425,13 +439,14 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.xl,
     borderRadius: borderRadius.xl,
     borderWidth: 1,
-    padding: spacing.xl,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
     alignItems: 'center',
   },
   amountLabel: {
     fontSize: 14,
     fontFamily: typography.fontFamily.medium,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   amountDisplayRow: {
     flexDirection: 'row',
@@ -439,18 +454,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   amountCurrency: {
-    fontSize: 32,
+    fontSize: 28,
     fontFamily: typography.fontFamily.bold,
     marginRight: 2,
   },
   amountValue: {
-    fontSize: 44,
+    fontSize: 40,
     fontFamily: typography.fontFamily.bold,
     letterSpacing: -1,
   },
   cursor: {
     width: 3,
-    height: 38,
+    height: 34,
     marginLeft: 4,
     borderRadius: 1.5,
   },
@@ -458,7 +473,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: typography.fontFamily.regular,
     marginTop: spacing.xs,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   shortcutsRow: {
@@ -495,12 +510,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.lg,
     paddingTop: spacing.xs,
   },
   saveButton: {

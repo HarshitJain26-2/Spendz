@@ -77,9 +77,9 @@ export const NumericKeypad: React.FC<NumericKeypadProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    gap: spacing.sm,
+    gap: 6,
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   row: {
     flexDirection: 'row',
@@ -88,14 +88,14 @@ const styles = StyleSheet.create({
   },
   key: {
     flex: 1,
-    height: 56,
+    height: 50,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   keyText: {
-    fontSize: 24,
+    fontSize: 22,
     fontFamily: typography.fontFamily.semiBold,
   },
 });

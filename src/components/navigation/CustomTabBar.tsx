@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Platform,
+  Animated,
 } from 'react-native';
 import { useRouter, Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +19,7 @@ import {
 import { useTheme } from '@/hooks/useTheme';
 import { typography } from '@/theme/typography';
 import { borderRadius, spacing, shadows } from '@/theme/spacing';
+import { AddActionSheet } from './AddActionSheet';
 
 export type CustomTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
 
@@ -29,6 +31,30 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
   const router = useRouter();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const [isActionSheetVisible, setIsActionSheetVisible] = useState(false);
+  const plusScale = useRef(new Animated.Value(1)).current;
+
+  const handlePlusPressIn = () => {
+    Animated.spring(plusScale, {
+      toValue: 0.9,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
+  };
+
+  const handlePlusPressOut = () => {
+    Animated.spring(plusScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 8,
+    }).start();
+  };
+
+  const handlePlusPress = () => {
+    setIsActionSheetVisible(true);
+  };
 
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8);
 
@@ -132,17 +158,21 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
 
       {/* 3. Center Prominent Mint Plus Button */}
       <View style={styles.centerButtonWrap}>
-        <TouchableOpacity
-          onPress={() => router.push('/add/expense')}
-          activeOpacity={0.8}
-          style={[
-            styles.centerPlusButton,
-            { backgroundColor: colors.accent },
-            shadows.md,
-          ]}
-        >
-          <Plus size={26} color="#000000" strokeWidth={2.4} />
-        </TouchableOpacity>
+        <Animated.View style={{ transform: [{ scale: plusScale }] }}>
+          <TouchableOpacity
+            onPress={handlePlusPress}
+            onPressIn={handlePlusPressIn}
+            onPressOut={handlePlusPressOut}
+            activeOpacity={0.85}
+            style={[
+              styles.centerPlusButton,
+              { backgroundColor: colors.accent },
+              shadows.md,
+            ]}
+          >
+            <Plus size={26} color="#000000" strokeWidth={2.4} />
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
       {/* 4. Friends */}
@@ -150,6 +180,12 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
 
       {/* 5. Settings */}
       {renderTabItem(settingsRoute)}
+
+      {/* Add Transaction Action Sheet */}
+      <AddActionSheet
+        visible={isActionSheetVisible}
+        onClose={() => setIsActionSheetVisible(false)}
+      />
     </View>
   );
 };
