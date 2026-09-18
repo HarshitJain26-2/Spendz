@@ -58,6 +58,7 @@ export interface Friend {
 // ─── Split Expense ───────────────────────────────────────────────────
 export type SplitMethod = 'equal' | 'custom';
 export type SplitStatus = 'pending' | 'partial' | 'settled';
+export type PaidByType = 'me' | 'friend';
 
 export interface SplitExpense {
   id: string;
@@ -65,6 +66,8 @@ export interface SplitExpense {
   totalAmount: number;
   splitMethod: SplitMethod;
   status: SplitStatus;
+  paidByType: PaidByType;
+  paidByFriendId?: string | null;
   createdAt: string;
   // Joined
   participants?: SplitParticipant[];

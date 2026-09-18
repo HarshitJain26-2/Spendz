@@ -12,8 +12,10 @@ import { FAB } from '@/components/ui/FAB';
 import { useAppStore } from '@/store/appStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useTransactionStore } from '@/store/transactionStore';
+import { useSplitStore } from '@/store/splitStore';
 import { isCashAccount, isOnlineAccount } from '@/constants/accountTypes';
 import { getCurrentMonthRange } from '@/utils/date';
+import { getUserPersonalExpense } from '@/utils/calculations';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 
@@ -23,6 +25,7 @@ export default function HomeScreen() {
   const userProfile = useAppStore((s) => s.userProfile);
   const accounts = useAccountStore((s) => s.accounts);
   const transactions = useTransactionStore((s) => s.transactions);
+  const splitExpenses = useSplitStore((s) => s.splitExpenses);
 
   const { totalBalance, cashBalance, onlineBalance } = useMemo(() => {
     let total = 0;
@@ -53,14 +56,17 @@ export default function HomeScreen() {
 
     const expense = monthTransactions
       .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => {
+        const split = splitExpenses.find((s) => s.transactionId === t.id);
+        return sum + getUserPersonalExpense(t, split);
+      }, 0);
 
     return {
       income,
       expense,
       saved: income - expense,
     };
-  }, [transactions]);
+  }, [transactions, splitExpenses]);
 
   const recentTransactions = useMemo(
     () => transactions.slice(0, 5),

@@ -1,4 +1,4 @@
-import type { SplitMethod } from '../types';
+import type { SplitMethod, SplitExpense } from '../types';
 
 /**
  * Calculate equal split amounts
@@ -72,4 +72,27 @@ export const getBalanceInfo = (balance: number): {
     return { label: 'you owe', color: 'expense', absAmount: Math.abs(balance) };
   }
   return { label: 'settled up', color: 'textSecondary', absAmount: 0 };
+};
+
+/**
+ * Get user's personal expense amount for a transaction.
+ * If transaction is linked to a split expense:
+ * - The personal share is derived from "You" participant (friendId === null)
+ * If not linked to a split: full transaction amount
+ */
+export const getUserPersonalExpense = (
+  transaction: { type: string; amount: number },
+  split?: SplitExpense
+): number => {
+  if (transaction.type !== 'expense') return 0;
+  if (!split) return transaction.amount;
+
+  const myPart = split.participants?.find((p) => p.friendId === null);
+  if (myPart) {
+    return myPart.amount;
+  }
+  if (split.paidByType === 'friend') {
+    return 0;
+  }
+  return transaction.amount;
 };

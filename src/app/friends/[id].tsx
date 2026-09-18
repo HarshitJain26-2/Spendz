@@ -160,7 +160,7 @@ export default function FriendDetailScreen() {
             </Text>
           </View>
 
-          {balance > 0 && (
+          {balance !== 0 && (
             <Button
               title="Settle Up"
               icon={<HandCoins size={18} color="#FFFFFF" />}
@@ -202,9 +202,22 @@ export default function FriendDetailScreen() {
             const transaction = transactions.find(
               (t) => t.id === split.transactionId
             );
-            const participant = split.participants?.find(
+            const isFriendPaid = split.paidByType === 'friend' && split.paidByFriendId === friend.id;
+            const friendParticipant = split.participants?.find(
               (p) => p.friendId === friend.id
             );
+            const myParticipant = split.participants?.find(
+              (p) => p.friendId === null
+            );
+
+            // If friend paid, the relevant debt is what user owes friend (myParticipant).
+            // If user paid, the relevant debt is what friend owes user (friendParticipant).
+            const relevantAmount = isFriendPaid
+              ? (myParticipant?.amount || 0)
+              : (friendParticipant?.amount || 0);
+            const isSettled = isFriendPaid
+              ? Boolean(myParticipant?.isPaid)
+              : Boolean(friendParticipant?.isPaid);
 
             return (
               <TouchableOpacity
@@ -236,7 +249,8 @@ export default function FriendDetailScreen() {
                       { color: colors.textTertiary },
                     ]}
                   >
-                    {transaction ? formatRelativeDate(transaction.date) : ''}
+                    {isFriendPaid ? `${friend.name} paid` : 'You paid'}
+                    {transaction ? ` • ${formatRelativeDate(transaction.date)}` : ''}
                   </Text>
                 </View>
 
@@ -247,9 +261,9 @@ export default function FriendDetailScreen() {
                       { color: colors.textPrimary },
                     ]}
                   >
-                    {participant ? formatCurrency(participant.amount) : '₹0'}
+                    {formatCurrency(relevantAmount)}
                   </Text>
-                  {participant?.isPaid ? (
+                  {isSettled ? (
                     <View style={styles.badgeRow}>
                       <CheckCircle2 size={12} color={colors.income} />
                       <Text style={{ color: colors.income, fontSize: 12 }}>
@@ -260,7 +274,7 @@ export default function FriendDetailScreen() {
                     <View style={styles.badgeRow}>
                       <Clock size={12} color={colors.expense} />
                       <Text style={{ color: colors.expense, fontSize: 12 }}>
-                        Unsettled
+                        {isFriendPaid ? 'You owe' : 'Unsettled'}
                       </Text>
                     </View>
                   )}

@@ -86,6 +86,8 @@ export const repository: DatabaseRepository = {
           total_amount REAL NOT NULL,
           split_method TEXT NOT NULL,
           status TEXT NOT NULL DEFAULT 'pending',
+          paid_by_type TEXT NOT NULL DEFAULT 'me',
+          paid_by_friend_id TEXT REFERENCES friends(id),
           created_at TEXT NOT NULL
         );
 
@@ -99,6 +101,14 @@ export const repository: DatabaseRepository = {
           settled_at TEXT
         );
       `);
+
+      // Safe non-destructive column migrations for existing SQLite databases
+      try {
+        sqliteDb.execSync(`ALTER TABLE split_expenses ADD COLUMN paid_by_type TEXT NOT NULL DEFAULT 'me';`);
+      } catch (_) {}
+      try {
+        sqliteDb.execSync(`ALTER TABLE split_expenses ADD COLUMN paid_by_friend_id TEXT;`);
+      } catch (_) {}
     }
   },
 
@@ -274,6 +284,8 @@ export const repository: DatabaseRepository = {
       totalAmount: s.totalAmount,
       splitMethod: s.splitMethod as SplitMethod,
       status: s.status as SplitStatus,
+      paidByType: (s.paidByType || 'me') as any,
+      paidByFriendId: s.paidByFriendId,
       createdAt: s.createdAt,
       participants: participants
         .filter((p) => p.splitExpenseId === s.id)
@@ -297,6 +309,27 @@ export const repository: DatabaseRepository = {
     db.insert(schema.splitExpenses).values(split).run();
     for (const p of participants) {
       db.insert(schema.splitParticipants).values(p).run();
+    }
+  },
+
+  updateSplitExpense(
+    id: string,
+    data: Partial<Omit<SplitExpense, 'participants'>>,
+    participants?: SplitParticipant[]
+  ) {
+    const db = getDb();
+    db.update(schema.splitExpenses)
+      .set(data as any)
+      .where(eq(schema.splitExpenses.id, id))
+      .run();
+
+    if (participants) {
+      for (const p of participants) {
+        db.update(schema.splitParticipants)
+          .set({ isPaid: p.isPaid, settledAt: p.settledAt, amount: p.amount })
+          .where(eq(schema.splitParticipants.id, p.id))
+          .run();
+      }
     }
   },
 

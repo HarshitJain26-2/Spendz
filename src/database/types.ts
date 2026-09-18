@@ -42,6 +42,11 @@ export interface DatabaseRepository {
     split: Omit<SplitExpense, 'participants'>,
     participants: SplitParticipant[]
   ): void;
+  updateSplitExpense(
+    id: string,
+    data: Partial<Omit<SplitExpense, 'participants'>>,
+    participants?: SplitParticipant[]
+  ): void;
   settleSplitParticipant(
     splitExpenseId: string,
     participantId: string,

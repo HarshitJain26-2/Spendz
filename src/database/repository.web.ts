@@ -190,6 +190,8 @@ export const repository: DatabaseRepository = {
 
     return splits.map((s) => ({
       ...s,
+      paidByType: s.paidByType || 'me',
+      paidByFriendId: s.paidByFriendId || null,
       participants: participants.filter((p) => p.splitExpenseId === s.id),
     }));
   },
@@ -211,6 +213,33 @@ export const repository: DatabaseRepository = {
     );
     allParticipants.push(...participants);
     setStorage(STORAGE_KEYS.PARTICIPANTS, allParticipants);
+  },
+
+  updateSplitExpense(
+    id: string,
+    data: Partial<Omit<SplitExpense, 'participants'>>,
+    participants?: SplitParticipant[]
+  ) {
+    const splits = getStorage<Omit<SplitExpense, 'participants'>[]>(
+      STORAGE_KEYS.SPLITS,
+      []
+    );
+    const updatedSplits = splits.map((s) =>
+      s.id === id ? { ...s, ...data } : s
+    );
+    setStorage(STORAGE_KEYS.SPLITS, updatedSplits);
+
+    if (participants) {
+      const allParticipants = getStorage<SplitParticipant[]>(
+        STORAGE_KEYS.PARTICIPANTS,
+        []
+      );
+      const participantMap = new Map(participants.map((p) => [p.id, p]));
+      const updatedParticipants = allParticipants.map((p) =>
+        participantMap.has(p.id) ? { ...p, ...participantMap.get(p.id)! } : p
+      );
+      setStorage(STORAGE_KEYS.PARTICIPANTS, updatedParticipants);
+    }
   },
 
   settleSplitParticipant(

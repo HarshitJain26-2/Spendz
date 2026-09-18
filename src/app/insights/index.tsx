@@ -20,10 +20,12 @@ import {
 import { useTheme } from '@/hooks/useTheme';
 import { useTransactionStore } from '@/store/transactionStore';
 import { useCategoryStore } from '@/store/categoryStore';
+import { useSplitStore } from '@/store/splitStore';
 import { CategoryChart } from '@/components/charts/CategoryChart';
 import { ComparisonBar } from '@/components/charts/ComparisonBar';
 import { formatCurrency } from '@/utils/currency';
 import { formatMonth } from '@/utils/date';
+import { getUserPersonalExpense } from '@/utils/calculations';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
 import type { CategoryBreakdown } from '@/types';
@@ -34,6 +36,7 @@ export default function InsightsScreen() {
   const transactions = useTransactionStore((s) => s.transactions);
   const categories = useCategoryStore((s) => s.categories);
   const getCategoryById = useCategoryStore((s) => s.getCategoryById);
+  const splitExpenses = useSplitStore((s) => s.splitExpenses);
 
   // Month navigation state
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -66,12 +69,15 @@ export default function InsightsScreen() {
       if (t.type === 'income') {
         inc += t.amount;
       } else if (t.type === 'expense') {
-        exp += t.amount;
+        const split = splitExpenses.find((s) => s.transactionId === t.id);
+        const effectiveAmount = getUserPersonalExpense(t, split);
+
+        exp += effectiveAmount;
         const catId = t.categoryId || 'uncategorized';
         if (!catMap[catId]) {
           catMap[catId] = { amount: 0, count: 0 };
         }
-        catMap[catId].amount += t.amount;
+        catMap[catId].amount += effectiveAmount;
         catMap[catId].count += 1;
       }
     }

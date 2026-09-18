@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { SplitExpense, SplitParticipant, SplitMethod, SplitStatus } from '@/types';
+import type {
+  SplitExpense,
+  SplitParticipant,
+  SplitMethod,
+  SplitStatus,
+  PaidByType,
+} from '@/types';
 import { repository } from '@/database';
 import { generateId, getTodayISO } from '@/utils/date';
 
@@ -12,12 +18,19 @@ interface SplitState {
     transactionId: string;
     totalAmount: number;
     splitMethod: SplitMethod;
+    paidByType?: PaidByType;
+    paidByFriendId?: string | null;
     participants: Array<{
       friendId: string | null;
       name: string;
       amount: number;
     }>;
   }) => SplitExpense;
+  updateSplitExpense: (
+    splitExpenseId: string,
+    data: Partial<Omit<SplitExpense, 'participants'>>,
+    participants?: SplitParticipant[]
+  ) => void;
   settleSplitParticipant: (splitExpenseId: string, participantId: string) => void;
   getSplitsByFriend: (friendId: string) => SplitExpense[];
   getFriendBalance: (friendId: string) => number;
@@ -40,16 +53,27 @@ export const useSplitStore = create<SplitState>((set, get) => ({
   addSplitExpense: (data) => {
     const now = getTodayISO();
     const splitId = generateId();
+    const paidByType: PaidByType = data.paidByType || 'me';
+    const paidByFriendId = data.paidByFriendId || null;
 
-    const participantRecords: SplitParticipant[] = data.participants.map((p) => ({
-      id: generateId(),
-      splitExpenseId: splitId,
-      friendId: p.friendId,
-      name: p.name,
-      amount: p.amount,
-      isPaid: p.friendId === null, // "you" are automatically paid
-      settledAt: p.friendId === null ? now : null,
-    }));
+    const participantRecords: SplitParticipant[] = data.participants.map((p) => {
+      // If 'me' paid, 'you' (friendId === null) is marked paid.
+      // If a friend paid, that specific friend (friendId === paidByFriendId) is marked paid.
+      const isPaid =
+        paidByType === 'me'
+          ? p.friendId === null
+          : p.friendId === paidByFriendId;
+
+      return {
+        id: generateId(),
+        splitExpenseId: splitId,
+        friendId: p.friendId,
+        name: p.name,
+        amount: p.amount,
+        isPaid,
+        settledAt: isPaid ? now : null,
+      };
+    });
 
     const splitExpense: SplitExpense = {
       id: splitId,
@@ -57,6 +81,8 @@ export const useSplitStore = create<SplitState>((set, get) => ({
       totalAmount: data.totalAmount,
       splitMethod: data.splitMethod,
       status: 'pending',
+      paidByType,
+      paidByFriendId,
       createdAt: now,
       participants: participantRecords,
     };
@@ -68,6 +94,8 @@ export const useSplitStore = create<SplitState>((set, get) => ({
         totalAmount: data.totalAmount,
         splitMethod: data.splitMethod,
         status: 'pending',
+        paidByType,
+        paidByFriendId,
         createdAt: now,
       },
       participantRecords
@@ -78,6 +106,21 @@ export const useSplitStore = create<SplitState>((set, get) => ({
     }));
 
     return splitExpense;
+  },
+
+  updateSplitExpense: (splitExpenseId, data, participants) => {
+    repository.updateSplitExpense(splitExpenseId, data, participants);
+
+    set((state) => ({
+      splitExpenses: state.splitExpenses.map((s) => {
+        if (s.id !== splitExpenseId) return s;
+        return {
+          ...s,
+          ...data,
+          participants: participants || s.participants,
+        };
+      }),
+    }));
   },
 
   settleSplitParticipant: (splitExpenseId, participantId) => {
@@ -116,8 +159,10 @@ export const useSplitStore = create<SplitState>((set, get) => ({
   },
 
   getSplitsByFriend: (friendId) => {
-    return get().splitExpenses.filter((split) =>
-      split.participants?.some((p) => p.friendId === friendId)
+    return get().splitExpenses.filter(
+      (split) =>
+        split.paidByFriendId === friendId ||
+        split.participants?.some((p) => p.friendId === friendId)
     );
   },
 
@@ -125,12 +170,26 @@ export const useSplitStore = create<SplitState>((set, get) => ({
     // Positive = they owe you, negative = you owe them
     let balance = 0;
     for (const split of get().splitExpenses) {
-      const participant = split.participants?.find(
-        (p) => p.friendId === friendId
-      );
-      if (participant && !participant.isPaid) {
-        balance += participant.amount;
+      const paidByType = split.paidByType || 'me';
+
+      if (paidByType === 'me') {
+        // You paid: find friend's participant entry
+        const participant = split.participants?.find(
+          (p) => p.friendId === friendId
+        );
+        if (participant && !participant.isPaid) {
+          balance += participant.amount;
+        }
+      } else if (paidByType === 'friend' && split.paidByFriendId === friendId) {
+        // This friend paid: find "You" (friendId === null) entry
+        const myParticipant = split.participants?.find(
+          (p) => p.friendId === null
+        );
+        if (myParticipant && !myParticipant.isPaid) {
+          balance -= myParticipant.amount;
+        }
       }
+      // If another friend paid (paidByFriendId !== friendId), neither you owe them nor they owe you
     }
     return balance;
   },

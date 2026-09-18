@@ -51,6 +51,10 @@ export default function AddSplitScreen() {
   const [note, setNote] = useState('');
   const [splitMethod, setSplitMethod] = useState<'equal' | 'custom'>('equal');
 
+  // Payer state: Me or selected friend
+  const [paidByType, setPaidByType] = useState<'me' | 'friend'>('me');
+  const [paidByFriendId, setPaidByFriendId] = useState<string | null>(null);
+
   // Selected friends IDs (You is always implicit)
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
   // Custom amounts per participant
@@ -63,6 +67,11 @@ export default function AddSplitScreen() {
   const toggleFriend = (id: string) => {
     if (selectedFriendIds.includes(id)) {
       setSelectedFriendIds(selectedFriendIds.filter((fId) => fId !== id));
+      // If the unselected friend was the payer, reset payer to 'me'
+      if (paidByType === 'friend' && paidByFriendId === id) {
+        setPaidByType('me');
+        setPaidByFriendId(null);
+      }
     } else {
       setSelectedFriendIds([...selectedFriendIds, id]);
     }
@@ -78,6 +87,11 @@ export default function AddSplitScreen() {
 
   const totalNum = parseFloat(amount) || 0;
   const totalParticipants = selectedFriendIds.length + 1; // +1 for "You"
+
+  const isFriendPaid = paidByType === 'friend' && Boolean(paidByFriendId);
+  const payerFriend = isFriendPaid
+    ? friends.find((f) => f.id === paidByFriendId)
+    : null;
 
   // Calculate shares
   const equalShares =
@@ -96,10 +110,20 @@ export default function AddSplitScreen() {
   );
 
   const handleSubmit = () => {
-    if (totalNum <= 0 || !accountId) return;
+    if (totalNum <= 0) return;
 
     if (selectedFriendIds.length === 0) {
       Alert.alert('Split with whom?', 'Please select at least one friend to split with.');
+      return;
+    }
+
+    if (isFriendPaid && !payerFriend) {
+      Alert.alert('Select Payer', 'Please choose a valid participant who paid.');
+      return;
+    }
+
+    if (!isFriendPaid && !accountId) {
+      Alert.alert('Select Account', 'Please select an account from which you paid.');
       return;
     }
 
@@ -111,14 +135,15 @@ export default function AddSplitScreen() {
       return;
     }
 
-    // 1. Create main expense transaction
+    // 1. Create main expense transaction with FULL total amount
     const transaction = addTransaction({
       type: 'expense',
       amount: totalNum,
       categoryId,
-      accountId,
-      note: note.trim() || 'Split Expense',
+      accountId: accountId || accounts[0]?.id || '',
+      note: note.trim() || (isFriendPaid ? `Split Expense (Paid by ${payerFriend?.name})` : 'Split Expense'),
       date: getTodayISO(),
+      skipBalanceUpdate: isFriendPaid, // Zero account outflow when friend paid!
     });
 
     // 2. Prepare participants list
@@ -167,6 +192,8 @@ export default function AddSplitScreen() {
       transactionId: transaction.id,
       totalAmount: totalNum,
       splitMethod,
+      paidByType,
+      paidByFriendId: isFriendPaid ? paidByFriendId : null,
       participants,
     });
 
@@ -175,7 +202,8 @@ export default function AddSplitScreen() {
 
   const isValid =
     totalNum > 0 &&
-    Boolean(accountId) &&
+    (isFriendPaid || Boolean(accountId)) &&
+    (paidByType === 'me' || (isFriendPaid && Boolean(payerFriend))) &&
     selectedFriendIds.length > 0 &&
     (splitMethod === 'equal' || Math.abs(customTotal - totalNum) <= 0.5);
 
@@ -204,18 +232,6 @@ export default function AddSplitScreen() {
         >
           {/* Amount */}
           <AmountInput value={amount} onChangeText={setAmount} />
-
-          {/* Paid by Account */}
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-              Paid By (Your Account)
-            </Text>
-          </View>
-          <AccountPicker
-            accounts={accounts}
-            selectedId={accountId}
-            onSelect={(a) => setAccountId(a.id)}
-          />
 
           {/* Category */}
           <View style={styles.sectionHeader}>
@@ -349,6 +365,115 @@ export default function AddSplitScreen() {
             })}
           </View>
 
+          {/* Paid By Selector */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+              Paid By
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.payerContainer,
+              {
+                backgroundColor: colors.surfaceElevated,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            {/* Option: Me */}
+            <TouchableOpacity
+              onPress={() => {
+                setPaidByType('me');
+                setPaidByFriendId(null);
+              }}
+              activeOpacity={0.7}
+              style={[
+                styles.payerRow,
+                {
+                  borderBottomColor: colors.border,
+                  borderBottomWidth: selectedFriendIds.length > 0 ? 1 : 0,
+                },
+              ]}
+            >
+              <View style={styles.payerLeft}>
+                <Avatar name="You" size={32} />
+                <Text style={[styles.payerName, { color: colors.textPrimary }]}>
+                  Me
+                </Text>
+              </View>
+              {paidByType === 'me' && (
+                <Check size={18} color={colors.accent} strokeWidth={2.5} />
+              )}
+            </TouchableOpacity>
+
+            {/* Selected Friends Options */}
+            {selectedFriendIds.map((fId, idx) => {
+              const friend = friends.find((f) => f.id === fId);
+              if (!friend) return null;
+              const isSelectedPayer = paidByType === 'friend' && paidByFriendId === friend.id;
+              const isLast = idx === selectedFriendIds.length - 1;
+
+              return (
+                <TouchableOpacity
+                  key={friend.id}
+                  onPress={() => {
+                    setPaidByType('friend');
+                    setPaidByFriendId(friend.id);
+                  }}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.payerRow,
+                    {
+                      borderBottomColor: colors.border,
+                      borderBottomWidth: isLast ? 0 : 1,
+                    },
+                  ]}
+                >
+                  <View style={styles.payerLeft}>
+                    <Avatar name={friend.name} size={32} />
+                    <Text style={[styles.payerName, { color: colors.textPrimary }]}>
+                      {friend.name}
+                    </Text>
+                  </View>
+                  {isSelectedPayer && (
+                    <Check size={18} color={colors.accent} strokeWidth={2.5} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Paid from Account (Only when Me paid) */}
+          {paidByType === 'me' ? (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+                  Paid From Account
+                </Text>
+              </View>
+              <AccountPicker
+                accounts={accounts}
+                selectedId={accountId}
+                onSelect={(a) => setAccountId(a.id)}
+              />
+            </>
+          ) : (
+            <View
+              style={[
+                styles.friendPaidInfo,
+                {
+                  backgroundColor: colors.surfaceElevated,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Users size={18} color={colors.accent} />
+              <Text style={[styles.friendPaidInfoText, { color: colors.textSecondary }]}>
+                {payerFriend?.name || 'Friend'} paid the full bill • No money deducted from your accounts
+              </Text>
+            </View>
+          )}
+
           {/* Split Mode Selector (Equal vs Custom) */}
           <View style={styles.modeSelectorContainer}>
             <TouchableOpacity
@@ -445,7 +570,9 @@ export default function AddSplitScreen() {
                     { color: colors.textTertiary },
                   ]}
                 >
-                  You will be owed {formatCurrency(equalShare * selectedFriendIds.length)} in total.
+                  {isFriendPaid
+                    ? `${payerFriend?.name || 'Friend'} paid ${formatCurrency(totalNum)}. You will owe ${payerFriend?.name || 'them'} ${formatCurrency(equalShare)}.`
+                    : `You will be owed ${formatCurrency(equalShare * selectedFriendIds.length)} in total.`}
                 </Text>
               )}
             </View>
@@ -540,6 +667,18 @@ export default function AddSplitScreen() {
                   {formatCurrency(customTotal)} / {formatCurrency(totalNum)}
                 </Text>
               </View>
+              {selectedFriendIds.length > 0 && Math.abs(customTotal - totalNum) <= 0.5 && (
+                <Text
+                  style={[
+                    styles.summaryNote,
+                    { color: colors.textTertiary, marginTop: spacing.xs },
+                  ]}
+                >
+                  {isFriendPaid
+                    ? `${payerFriend?.name || 'Friend'} paid ${formatCurrency(totalNum)}. You will owe ${payerFriend?.name || 'them'} ${formatCurrency(parseFloat(customAmounts['you']) || 0)}.`
+                    : `You will be owed ${formatCurrency(totalNum - (parseFloat(customAmounts['you']) || 0))} in total.`}
+                </Text>
+              )}
             </View>
           )}
 
@@ -732,4 +871,43 @@ const styles = StyleSheet.create({
     paddingBottom: spacing['2xl'],
     marginTop: spacing.lg,
   },
+  payerContainer: {
+    marginHorizontal: spacing.xl,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  payerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  payerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  payerName: {
+    fontSize: 15,
+    fontFamily: typography.fontFamily.medium,
+  },
+  friendPaidInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.xl,
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: spacing.sm,
+  },
+  friendPaidInfoText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: typography.fontFamily.regular,
+    lineHeight: 18,
+  },
 });
+

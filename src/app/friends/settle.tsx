@@ -47,7 +47,7 @@ export default function SettleScreen() {
   const addTransaction = useTransactionStore((s) => s.addTransaction);
 
   const [accountId, setAccountId] = useState(accounts[0]?.id || '');
-  const [recordIncome, setRecordIncome] = useState(true);
+  const [applyAccountEffect, setApplyAccountEffect] = useState(true);
 
   if (!friend) {
     return (
@@ -66,8 +66,16 @@ export default function SettleScreen() {
     );
   }
 
-  // Find all unsettled participant entries for this friend
-  const unsettledItems: Array<{
+  // 1. Unsettled items where friend owes user
+  const itemsOwedToMe: Array<{
+    splitId: string;
+    participantId: string;
+    amount: number;
+    transactionId: string;
+  }> = [];
+
+  // 2. Unsettled items where user owes friend
+  const itemsIOwe: Array<{
     splitId: string;
     participantId: string;
     amount: number;
@@ -75,47 +83,77 @@ export default function SettleScreen() {
   }> = [];
 
   for (const split of splits) {
-    const participant = split.participants?.find(
-      (p) => p.friendId === friend.id && !p.isPaid
-    );
-    if (participant) {
-      unsettledItems.push({
-        splitId: split.id,
-        participantId: participant.id,
-        amount: participant.amount,
-        transactionId: split.transactionId,
-      });
+    const paidByType = split.paidByType || 'me';
+
+    if (paidByType === 'me') {
+      const participant = split.participants?.find(
+        (p) => p.friendId === friend.id && !p.isPaid
+      );
+      if (participant) {
+        itemsOwedToMe.push({
+          splitId: split.id,
+          participantId: participant.id,
+          amount: participant.amount,
+          transactionId: split.transactionId,
+        });
+      }
+    } else if (paidByType === 'friend' && split.paidByFriendId === friend.id) {
+      const myParticipant = split.participants?.find(
+        (p) => p.friendId === null && !p.isPaid
+      );
+      if (myParticipant) {
+        itemsIOwe.push({
+          splitId: split.id,
+          participantId: myParticipant.id,
+          amount: myParticipant.amount,
+          transactionId: split.transactionId,
+        });
+      }
     }
   }
 
-  const totalOwed = unsettledItems.reduce((sum, item) => sum + item.amount, 0);
+  const totalOwedToMe = itemsOwedToMe.reduce((sum, item) => sum + item.amount, 0);
+  const totalIOwe = itemsIOwe.reduce((sum, item) => sum + item.amount, 0);
+  const netBalance = totalOwedToMe - totalIOwe;
+  const isUserOwing = netBalance < 0;
+  const absNet = Math.abs(netBalance);
+  const totalUnsettledCount = itemsOwedToMe.length + itemsIOwe.length;
 
   const handleSettle = () => {
-    if (unsettledItems.length === 0) {
+    if (totalUnsettledCount === 0) {
       router.back();
       return;
     }
 
-    // Mark all as settled
-    for (const item of unsettledItems) {
+    // Mark all participant records as settled
+    for (const item of itemsOwedToMe) {
+      settleSplitParticipant(item.splitId, item.participantId);
+    }
+    for (const item of itemsIOwe) {
       settleSplitParticipant(item.splitId, item.participantId);
     }
 
-    // If recordIncome is enabled, deposit to selected account
-    if (recordIncome && accountId && totalOwed > 0) {
-      addTransaction({
-        type: 'income',
-        amount: totalOwed,
-        accountId,
-        categoryId: null,
-        note: `Settlement from ${friend.name}`,
-        date: getTodayISO(),
-      });
+    // Handle account balance updates
+    if (applyAccountEffect && accountId && absNet > 0) {
+      if (isUserOwing) {
+        // User is paying friend back: directly deduct from account WITHOUT creating an expense transaction
+        useAccountStore.getState().updateBalance(accountId, -absNet);
+      } else {
+        // Friend paid user back: record incoming settlement
+        addTransaction({
+          type: 'income',
+          amount: absNet,
+          accountId,
+          categoryId: null,
+          note: `Settlement from ${friend.name}`,
+          date: getTodayISO(),
+        });
+      }
     }
 
     Alert.alert(
       'Settled!',
-      `Successfully settled ${formatCurrency(totalOwed)} with ${friend.name}.`,
+      `Successfully settled ${formatCurrency(absNet)} with ${friend.name}.`,
       [{ text: 'OK', onPress: () => router.back() }]
     );
   };
@@ -150,21 +188,30 @@ export default function SettleScreen() {
           ]}
         >
           <Text style={[styles.amountLabel, { color: colors.textSecondary }]}>
-            Total to settle with {friend.name}
+            {isUserOwing
+              ? `You owe ${friend.name}`
+              : totalUnsettledCount > 0
+                ? `${friend.name} owes you`
+                : 'All settled up'}
           </Text>
-          <Text style={[styles.amountValue, { color: colors.income }]}>
-            {formatCurrency(totalOwed)}
+          <Text
+            style={[
+              styles.amountValue,
+              { color: isUserOwing ? colors.expense : colors.income },
+            ]}
+          >
+            {formatCurrency(absNet)}
           </Text>
           <Text style={[styles.itemCount, { color: colors.textTertiary }]}>
-            {unsettledItems.length} unsettled shared{' '}
-            {unsettledItems.length === 1 ? 'expense' : 'expenses'}
+            {totalUnsettledCount} unsettled shared{' '}
+            {totalUnsettledCount === 1 ? 'expense' : 'expenses'}
           </Text>
         </View>
 
-        {/* Deposit account selector */}
+        {/* Account selector */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            Deposit To Account
+            {isUserOwing ? 'Pay From Account' : 'Deposit To Account'}
           </Text>
         </View>
         <AccountPicker
@@ -175,7 +222,7 @@ export default function SettleScreen() {
 
         {/* Option toggle */}
         <TouchableOpacity
-          onPress={() => setRecordIncome(!recordIncome)}
+          onPress={() => setApplyAccountEffect(!applyAccountEffect)}
           style={[
             styles.toggleRow,
             {
@@ -189,17 +236,19 @@ export default function SettleScreen() {
             <Text
               style={[styles.toggleTitle, { color: colors.textPrimary }]}
             >
-              Add to Account Balance
+              {isUserOwing ? 'Deduct from Account Balance' : 'Add to Account Balance'}
             </Text>
             <Text
               style={[styles.toggleDesc, { color: colors.textSecondary }]}
             >
-              Record an incoming transaction of {formatCurrency(totalOwed)}
+              {isUserOwing
+                ? `Deduct ${formatCurrency(absNet)} directly from your selected account`
+                : `Record an incoming transaction of ${formatCurrency(absNet)}`}
             </Text>
           </View>
           <CheckCircle2
             size={22}
-            color={recordIncome ? colors.accent : colors.border}
+            color={applyAccountEffect ? colors.accent : colors.border}
           />
         </TouchableOpacity>
       </ScrollView>
@@ -207,11 +256,11 @@ export default function SettleScreen() {
       {/* Settle CTA */}
       <View style={styles.bottom}>
         <Button
-          title={`Confirm Settlement (${formatCurrency(totalOwed)})`}
+          title={`Confirm Settlement (${formatCurrency(absNet)})`}
           onPress={handleSettle}
           size="lg"
           fullWidth
-          disabled={totalOwed <= 0}
+          disabled={totalUnsettledCount === 0}
         />
       </View>
     </SafeAreaView>

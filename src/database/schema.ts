@@ -54,6 +54,8 @@ export const splitExpenses = sqliteTable('split_expenses', {
   totalAmount: real('total_amount').notNull(),
   splitMethod: text('split_method').notNull(), // 'equal' | 'custom'
   status: text('status').notNull().default('pending'), // 'pending' | 'partial' | 'settled'
+  paidByType: text('paid_by_type').notNull().default('me'), // 'me' | 'friend'
+  paidByFriendId: text('paid_by_friend_id').references(() => friends.id),
   createdAt: text('created_at').notNull(),
 });
 
