@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
+import { Card } from '@/components/ui/Card';
 import { formatCurrency } from '@/utils/currency';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
@@ -21,15 +22,7 @@ export const ComparisonBar: React.FC<ComparisonBarProps> = ({
   const expensePercent = total > 0 ? Math.round((expense / total) * 100) : 50;
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.surfaceElevated,
-          borderColor: colors.border,
-        },
-      ]}
-    >
+    <Card padding="lg" style={styles.card}>
       <Text style={[styles.title, { color: colors.textPrimary }]}>
         Cash Flow Ratio
       </Text>
@@ -82,30 +75,28 @@ export const ComparisonBar: React.FC<ComparisonBarProps> = ({
           </Text>
         </View>
       </View>
-    </View>
+    </Card>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    padding: spacing.lg,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
+  card: {
     gap: spacing.md,
   },
   title: {
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.h4,
+    fontSize: 16,
   },
   bar: {
     flexDirection: 'row',
-    height: 12,
-    borderRadius: 6,
+    height: 10,
+    borderRadius: borderRadius.full,
     overflow: 'hidden',
-    gap: 2,
+    gap: 3,
   },
   segment: {
     height: '100%',
+    borderRadius: 2,
   },
   labels: {
     flexDirection: 'row',

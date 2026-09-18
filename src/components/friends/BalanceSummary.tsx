@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { TrendingUp, TrendingDown } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
+import { Card } from '@/components/ui/Card';
 import { formatCurrency } from '@/utils/currency';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
@@ -19,20 +20,14 @@ export const BalanceSummary: React.FC<BalanceSummaryProps> = ({
   const net = youAreOwed - youOwe;
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.surfaceElevated,
-          borderColor: colors.border,
-        },
-      ]}
-    >
+    <Card style={styles.card} padding="lg">
       <View style={styles.row}>
         {/* You are owed */}
         <View style={styles.column}>
           <View style={styles.labelRow}>
-            <TrendingUp size={16} color={colors.income} />
+            <View style={[styles.iconWrap, { backgroundColor: colors.incomeLight }]}>
+              <TrendingUp size={14} color={colors.income} strokeWidth={2.4} />
+            </View>
             <Text style={[styles.label, { color: colors.textSecondary }]}>
               You are owed
             </Text>
@@ -47,7 +42,9 @@ export const BalanceSummary: React.FC<BalanceSummaryProps> = ({
         {/* You owe */}
         <View style={styles.column}>
           <View style={styles.labelRow}>
-            <TrendingDown size={16} color={colors.expense} />
+            <View style={[styles.iconWrap, { backgroundColor: colors.expenseLight }]}>
+              <TrendingDown size={14} color={colors.expense} strokeWidth={2.4} />
+            </View>
             <Text style={[styles.label, { color: colors.textSecondary }]}>
               You owe
             </Text>
@@ -61,34 +58,45 @@ export const BalanceSummary: React.FC<BalanceSummaryProps> = ({
       {/* Net Bar */}
       <View style={[styles.netRow, { borderTopColor: colors.border }]}>
         <Text style={[styles.netLabel, { color: colors.textTertiary }]}>
-          Net Balance:
+          Net Split Balance
         </Text>
-        <Text
+        <View
           style={[
-            styles.netAmount,
+            styles.netPill,
             {
-              color:
+              backgroundColor:
                 net > 0
-                  ? colors.income
+                  ? colors.incomeLight
                   : net < 0
-                    ? colors.expense
-                    : colors.textSecondary,
+                  ? colors.expenseLight
+                  : colors.pastelNeutral,
             },
           ]}
         >
-          {net > 0 ? `+${formatCurrency(net)}` : formatCurrency(net)}
-        </Text>
+          <Text
+            style={[
+              styles.netAmount,
+              {
+                color:
+                  net > 0
+                    ? colors.income
+                    : net < 0
+                    ? colors.expense
+                    : colors.pastelNeutralText,
+              },
+            ]}
+          >
+            {net > 0 ? `+${formatCurrency(net)}` : formatCurrency(net)}
+          </Text>
+        </View>
       </View>
-    </View>
+    </Card>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    padding: spacing.lg,
-    gap: spacing.md,
+  card: {
+    marginBottom: spacing.lg,
   },
   row: {
     flexDirection: 'row',
@@ -102,7 +110,14 @@ const styles = StyleSheet.create({
   labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: 6,
+  },
+  iconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   label: {
     fontFamily: typography.fontFamily.medium,
@@ -110,25 +125,31 @@ const styles = StyleSheet.create({
   },
   amount: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h3,
+    fontSize: 20,
   },
   divider: {
     width: 1,
-    height: 40,
+    height: 44,
   },
   netRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.md,
+    marginTop: spacing.md,
   },
   netLabel: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.caption,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+  },
+  netPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
   },
   netAmount: {
-    fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.small,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 13,
   },
 });

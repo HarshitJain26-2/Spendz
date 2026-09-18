@@ -11,11 +11,12 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, UserPlus } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
+import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useFriendStore } from '@/store/friendStore';
 import { typography } from '@/theme/typography';
-import { spacing } from '@/theme/spacing';
+import { spacing, borderRadius } from '@/theme/spacing';
 
 export default function AddFriendScreen() {
   const router = useRouter();
@@ -41,6 +42,7 @@ export default function AddFriendScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -48,44 +50,50 @@ export default function AddFriendScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-            <ArrowLeft size={24} color={colors.textPrimary} />
+          <TouchableOpacity
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+            style={styles.backButton}
+          >
+            <ArrowLeft size={22} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.textPrimary }]}>
             Add Friend
           </Text>
-          <View style={{ width: 24 }} />
+          <View style={{ width: 36 }} />
         </View>
 
         <View style={styles.content}>
-          <View style={styles.iconWrap}>
-            <View
-              style={[
-                styles.iconCircle,
-                { backgroundColor: colors.accent + '20' },
-              ]}
-            >
-              <UserPlus size={36} color={colors.accent} />
+          <Card style={styles.formCard} padding="lg">
+            <View style={styles.iconCenter}>
+              <View
+                style={[
+                  styles.iconCircle,
+                  { backgroundColor: colors.accentLight },
+                ]}
+              >
+                <UserPlus size={28} color={colors.accent} />
+              </View>
             </View>
-          </View>
 
-          <Input
-            label="Friend's Name"
-            placeholder="e.g., Alex, Sarah"
-            value={name}
-            onChangeText={setName}
-            autoFocus
-          />
+            <Input
+              label="Friend's Name"
+              placeholder="e.g., Alex, Sarah"
+              value={name}
+              onChangeText={setName}
+              autoFocus
+            />
 
-          <Input
-            label="Phone or UPI ID (optional)"
-            placeholder="e.g., +91 98765 43210 or user@upi"
-            value={phone}
-            onChangeText={setPhone}
-          />
+            <Input
+              label="Phone or UPI ID (optional)"
+              placeholder="e.g., +91 98765 43210 or user@upi"
+              value={phone}
+              onChangeText={setPhone}
+            />
+          </Card>
         </View>
 
-        <View style={styles.bottom}>
+        <View style={[styles.bottom, { backgroundColor: colors.background }]}>
           <Button
             title="Add Friend"
             onPress={handleSubmit}
@@ -111,31 +119,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  backButton: {
+    padding: spacing.xs,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h3,
+    fontSize: 20,
   },
   content: {
     flex: 1,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.md,
-    gap: spacing.lg,
   },
-  iconWrap: {
+  formCard: {
+    gap: spacing.md,
+  },
+  iconCenter: {
     alignItems: 'center',
-    marginVertical: spacing.md,
+    marginBottom: spacing.xs,
   },
   iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 60,
+    height: 60,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bottom: {
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing['2xl'],
+    paddingTop: spacing.sm,
   },
 });

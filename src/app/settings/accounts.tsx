@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,11 +12,11 @@ import { ArrowLeft, Plus, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useAccountStore } from '@/store/accountStore';
 import { DynamicIcon } from '@/components/ui/DynamicIcon';
-import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { formatCurrency } from '@/utils/currency';
 import { showAlert } from '@/utils/alert';
 import { typography } from '@/theme/typography';
-import { spacing, borderRadius } from '@/theme/spacing';
+import { spacing, borderRadius, shadows } from '@/theme/spacing';
 
 export default function AccountsManagementScreen() {
   const router = useRouter();
@@ -55,11 +54,16 @@ export default function AccountsManagementScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          <ArrowLeft size={24} color={colors.textPrimary} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          style={styles.backButton}
+        >
+          <ArrowLeft size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.textPrimary }]}>
           Accounts
@@ -69,7 +73,7 @@ export default function AccountsManagementScreen() {
           style={[styles.addBtn, { backgroundColor: colors.accent }]}
           activeOpacity={0.8}
         >
-          <Plus size={18} color="#FFFFFF" strokeWidth={2.5} />
+          <Plus size={18} color="#000000" strokeWidth={2.4} />
           <Text style={styles.addBtnText}>Add</Text>
         </TouchableOpacity>
       </View>
@@ -79,20 +83,19 @@ export default function AccountsManagementScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         {/* Total Balance Card */}
-        <View
-          style={[
-            styles.totalCard,
-            {
-              backgroundColor: colors.surfaceElevated,
-              borderColor: colors.border,
-            },
-          ]}
-        >
+        <Card style={styles.totalCard} padding="lg">
           <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>
             Total Balance Across Accounts
           </Text>
           <Text style={[styles.totalAmount, { color: colors.textPrimary }]}>
             {formatCurrency(totalBalance)}
+          </Text>
+        </Card>
+
+        {/* Section Title */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+            ALL ACCOUNTS ({accounts.length})
           </Text>
         </View>
 
@@ -104,15 +107,16 @@ export default function AccountsManagementScreen() {
               style={[
                 styles.accountCard,
                 {
-                  backgroundColor: colors.surfaceElevated,
+                  backgroundColor: colors.surface,
                   borderColor: colors.border,
                 },
+                shadows.sm,
               ]}
             >
               <View
                 style={[
                   styles.iconBox,
-                  { backgroundColor: `${acc.color}20` },
+                  { backgroundColor: `${acc.color}15` },
                 ]}
               >
                 <DynamicIcon name={acc.icon} size={22} color={acc.color} />
@@ -122,24 +126,28 @@ export default function AccountsManagementScreen() {
                 <View style={styles.nameRow}>
                   <Text
                     style={[styles.accountName, { color: colors.textPrimary }]}
+                    numberOfLines={1}
                   >
                     {acc.name}
                   </Text>
                   <View
                     style={[
                       styles.typeBadge,
-                      { backgroundColor: colors.border },
+                      { backgroundColor: colors.pastelNeutral },
                     ]}
                   >
                     <Text
-                      style={[styles.typeText, { color: colors.textSecondary }]}
+                      style={[
+                        styles.typeText,
+                        { color: colors.pastelNeutralText },
+                      ]}
                     >
                       {acc.type.toUpperCase()}
                     </Text>
                   </View>
                 </View>
                 <Text
-                  style={[styles.accountBalance, { color: colors.accent }]}
+                  style={[styles.accountBalance, { color: colors.textPrimary }]}
                 >
                   {formatCurrency(acc.balance)}
                 </Text>
@@ -171,46 +179,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  backButton: {
+    padding: spacing.xs,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h3,
+    fontSize: 20,
   },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: borderRadius.full,
     gap: 4,
   },
   addBtnText: {
-    color: '#FFFFFF',
+    color: '#000000',
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.small,
+    fontSize: 12,
   },
   scrollContent: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xs,
     paddingBottom: 40,
-    gap: spacing.lg,
+    gap: spacing.md,
   },
   totalCard: {
-    padding: spacing.xl,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    alignItems: 'center',
-    gap: 4,
+    gap: spacing.xs,
   },
   totalLabel: {
     fontFamily: typography.fontFamily.medium,
     fontSize: typography.fontSize.caption,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   totalAmount: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.hero,
+    fontSize: 28,
+  },
+  sectionHeader: {
+    marginTop: spacing.xs,
+    marginBottom: -spacing.xs,
+  },
+  sectionTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: 0.8,
   },
   list: {
     gap: spacing.sm,
@@ -219,44 +235,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     gap: spacing.md,
   },
   iconBox: {
     width: 44,
     height: 44,
-    borderRadius: borderRadius.md,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   accountInfo: {
     flex: 1,
-    gap: 2,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    marginBottom: 4,
   },
   accountName: {
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.body,
+    fontSize: 15,
   },
   typeBadge: {
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: borderRadius.full,
   },
   typeText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.tiny,
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 10,
+    letterSpacing: 0.5,
   },
   accountBalance: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.body,
+    fontSize: 15,
   },
   deleteBtn: {
-    padding: 6,
+    padding: spacing.sm,
   },
 });

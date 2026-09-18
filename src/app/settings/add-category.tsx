@@ -12,12 +12,13 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Check } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
+import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { DynamicIcon } from '@/components/ui/DynamicIcon';
 import { useCategoryStore } from '@/store/categoryStore';
 import { typography } from '@/theme/typography';
-import { spacing, borderRadius } from '@/theme/spacing';
+import { spacing, borderRadius, shadows } from '@/theme/spacing';
 import type { CategoryType } from '@/types';
 
 const POPULAR_ICONS = [
@@ -90,6 +91,7 @@ export default function AddCategoryScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -97,20 +99,24 @@ export default function AddCategoryScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-            <ArrowLeft size={24} color={colors.textPrimary} />
+          <TouchableOpacity
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+            style={styles.backButton}
+          >
+            <ArrowLeft size={22} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.textPrimary }]}>
             New Category
           </Text>
-          <View style={{ width: 24 }} />
+          <View style={{ width: 36 }} />
         </View>
 
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* Category Type Picker */}
+          {/* Category Type Filter Pills */}
           <View style={styles.typeSelector}>
             <TouchableOpacity
               onPress={() => setType('expense')}
@@ -119,8 +125,10 @@ export default function AddCategoryScreen() {
                 {
                   backgroundColor:
                     type === 'expense'
-                      ? colors.accent
-                      : colors.surfaceElevated,
+                      ? colors.textPrimary
+                      : colors.surface,
+                  borderColor:
+                    type === 'expense' ? colors.textPrimary : colors.border,
                 },
               ]}
               activeOpacity={0.7}
@@ -131,8 +139,12 @@ export default function AddCategoryScreen() {
                   {
                     color:
                       type === 'expense'
-                        ? '#FFFFFF'
+                        ? colors.surface
                         : colors.textSecondary,
+                    fontFamily:
+                      type === 'expense'
+                        ? typography.fontFamily.semiBold
+                        : typography.fontFamily.medium,
                   },
                 ]}
               >
@@ -147,8 +159,10 @@ export default function AddCategoryScreen() {
                 {
                   backgroundColor:
                     type === 'income'
-                      ? colors.accent
-                      : colors.surfaceElevated,
+                      ? colors.textPrimary
+                      : colors.surface,
+                  borderColor:
+                    type === 'income' ? colors.textPrimary : colors.border,
                 },
               ]}
               activeOpacity={0.7}
@@ -159,8 +173,12 @@ export default function AddCategoryScreen() {
                   {
                     color:
                       type === 'income'
-                        ? '#FFFFFF'
+                        ? colors.surface
                         : colors.textSecondary,
+                    fontFamily:
+                      type === 'income'
+                        ? typography.fontFamily.semiBold
+                        : typography.fontFamily.medium,
                   },
                 ]}
               >
@@ -169,86 +187,112 @@ export default function AddCategoryScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Name Input */}
-          <Input
-            label="Category Name"
-            placeholder="e.g., Gym, Pets, Side Gig"
-            value={name}
-            onChangeText={setName}
-            autoFocus
-          />
+          {/* Form Card */}
+          <Card style={styles.formCard} padding="lg">
+            {/* Live Preview */}
+            <View style={styles.previewCenter}>
+              <View
+                style={[
+                  styles.previewBox,
+                  { backgroundColor: `${selectedColor}15` },
+                ]}
+              >
+                <DynamicIcon
+                  name={selectedIcon}
+                  size={28}
+                  color={selectedColor}
+                />
+              </View>
+              <Text style={[styles.previewLabel, { color: colors.textPrimary }]}>
+                {name.trim() || 'Category Name'}
+              </Text>
+            </View>
+
+            {/* Name Input */}
+            <Input
+              label="Category Name"
+              placeholder="e.g., Gym, Pets, Side Gig"
+              value={name}
+              onChangeText={setName}
+              autoFocus
+            />
+          </Card>
 
           {/* Icon Selector */}
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-              Select Icon
+              SELECT ICON
             </Text>
           </View>
-          <View style={styles.iconGrid}>
-            {POPULAR_ICONS.map((icon) => {
-              const isSelected = selectedIcon === icon;
-              return (
-                <TouchableOpacity
-                  key={icon}
-                  onPress={() => setSelectedIcon(icon)}
-                  style={[
-                    styles.iconBox,
-                    {
-                      backgroundColor: isSelected
-                        ? `${selectedColor}25`
-                        : colors.surfaceElevated,
-                      borderColor: isSelected
-                        ? selectedColor
-                        : colors.border,
-                    },
-                  ]}
-                  activeOpacity={0.7}
-                >
-                  <DynamicIcon
-                    name={icon}
-                    size={22}
-                    color={isSelected ? selectedColor : colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <Card padding="md" style={styles.pickerCard}>
+            <View style={styles.iconGrid}>
+              {POPULAR_ICONS.map((icon) => {
+                const isSelected = selectedIcon === icon;
+                return (
+                  <TouchableOpacity
+                    key={icon}
+                    onPress={() => setSelectedIcon(icon)}
+                    style={[
+                      styles.iconBox,
+                      {
+                        backgroundColor: isSelected
+                          ? `${selectedColor}20`
+                          : colors.surfaceElevated,
+                        borderColor: isSelected
+                          ? selectedColor
+                          : 'transparent',
+                      },
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <DynamicIcon
+                      name={icon}
+                      size={20}
+                      color={isSelected ? selectedColor : colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </Card>
 
           {/* Color Selector */}
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-              Select Color
+              SELECT COLOR
             </Text>
           </View>
-          <View style={styles.colorGrid}>
-            {PALETTE.map((col) => {
-              const isSelected = selectedColor === col;
-              return (
-                <TouchableOpacity
-                  key={col}
-                  onPress={() => setSelectedColor(col)}
-                  style={[
-                    styles.colorCircle,
-                    {
-                      backgroundColor: col,
-                      borderColor: isSelected
-                        ? colors.textPrimary
-                        : 'transparent',
-                    },
-                  ]}
-                  activeOpacity={0.7}
-                >
-                  {isSelected && (
-                    <Check size={16} color="#FFFFFF" strokeWidth={3} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <Card padding="md" style={styles.pickerCard}>
+            <View style={styles.colorGrid}>
+              {PALETTE.map((col) => {
+                const isSelected = selectedColor === col;
+                return (
+                  <TouchableOpacity
+                    key={col}
+                    onPress={() => setSelectedColor(col)}
+                    style={[
+                      styles.colorCircle,
+                      {
+                        backgroundColor: col,
+                        borderColor: isSelected
+                          ? colors.textPrimary
+                          : 'transparent',
+                      },
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    {isSelected && (
+                      <Check size={16} color="#FFFFFF" strokeWidth={3} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </Card>
         </ScrollView>
 
         {/* Submit */}
-        <View style={styles.bottom}>
+        <View style={[styles.bottom, { backgroundColor: colors.background }]}>
           <Button
             title="Create Category"
             onPress={handleSubmit}
@@ -274,70 +318,99 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  backButton: {
+    padding: spacing.xs,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h3,
+    fontSize: 20,
   },
   scrollContent: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xs,
     paddingBottom: 40,
     gap: spacing.md,
   },
   typeSelector: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.xs,
   },
   typeBtn: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
+    paddingVertical: 8,
+    borderRadius: borderRadius.full,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
   },
   typeBtnText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.bodySmall,
+    fontSize: 13,
+  },
+  formCard: {
+    gap: spacing.md,
+  },
+  previewCenter: {
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  previewBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewLabel: {
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 16,
   },
   sectionHeader: {
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
+    marginBottom: -spacing.xs,
   },
   sectionTitle: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.caption,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: 0.8,
+  },
+  pickerCard: {
+    borderRadius: borderRadius.xl,
   },
   iconGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+    justifyContent: 'space-between',
   },
   iconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
   },
   colorGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.md,
-    paddingVertical: spacing.xs,
+    justifyContent: 'space-between',
   },
   colorCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 2,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
   },
   bottom: {
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing['2xl'],
+    paddingTop: spacing.sm,
   },
 });

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Check, Sun, Moon, Smartphone } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useAppStore } from '@/store/appStore';
+import { Card } from '@/components/ui/Card';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
 import type { ThemeMode } from '@/types';
@@ -19,116 +20,115 @@ export default function AppearanceScreen() {
     mode: ThemeMode;
     label: string;
     description: string;
-    icon: React.ReactNode;
+    icon: (color: string) => React.ReactNode;
   }> = [
     {
-      mode: 'system',
-      label: 'System Default',
-      description: 'Match your device light/dark appearance settings automatically',
-      icon: <Smartphone size={22} color={colors.accent} />,
+      mode: 'light',
+      label: 'Light Mode',
+      description: 'Warm off-white background with pure white cards (Default)',
+      icon: (c) => <Sun size={20} color={c} strokeWidth={2} />,
     },
     {
       mode: 'dark',
       label: 'Dark Mode',
-      description: 'Sleek, battery-friendly dark theme optimized for OLED screens',
-      icon: <Moon size={22} color={colors.accent} />,
+      description: 'Sleek, high-contrast dark palette optimized for night',
+      icon: (c) => <Moon size={20} color={c} strokeWidth={2} />,
     },
     {
-      mode: 'light',
-      label: 'Light Mode',
-      description: 'Bright and clean aesthetic with warm off-white tones',
-      icon: <Sun size={22} color={colors.accent} />,
+      mode: 'system',
+      label: 'System Default',
+      description: 'Automatically match device operating system settings',
+      icon: (c) => <Smartphone size={20} color={c} strokeWidth={2} />,
     },
   ];
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          <ArrowLeft size={24} color={colors.textPrimary} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          style={styles.backButton}
+        >
+          <ArrowLeft size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.textPrimary }]}>
           Appearance
         </Text>
-        <View style={{ width: 24 }} />
+        <View style={{ width: 36 }} />
       </View>
 
       <View style={styles.content}>
-        <Text style={[styles.caption, { color: colors.textSecondary }]}>
-          Choose how you want Spendz to look.
-        </Text>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+            THEME SELECTION
+          </Text>
+        </View>
 
-        <View style={styles.list}>
-          {options.map((opt) => {
+        <Card padding="none" style={styles.card}>
+          {options.map((opt, index) => {
             const isSelected = themeMode === opt.mode;
             return (
-              <TouchableOpacity
-                key={opt.mode}
-                onPress={() => setThemeMode(opt.mode)}
-                style={[
-                  styles.optionCard,
-                  {
-                    backgroundColor: isSelected
-                      ? colors.accent + '12'
-                      : colors.surfaceElevated,
-                    borderColor: isSelected
-                      ? colors.accent
-                      : colors.border,
-                  },
-                ]}
-                activeOpacity={0.7}
-              >
-                <View
-                  style={[
-                    styles.iconBox,
-                    {
-                      backgroundColor: isSelected
-                        ? colors.accent + '20'
-                        : colors.surface,
-                    },
-                  ]}
+              <View key={opt.mode}>
+                <TouchableOpacity
+                  onPress={() => setThemeMode(opt.mode)}
+                  style={styles.optionRow}
+                  activeOpacity={0.7}
                 >
-                  {opt.icon}
-                </View>
-
-                <View style={styles.textWrap}>
-                  <Text
+                  <View
                     style={[
-                      styles.optLabel,
+                      styles.iconBox,
                       {
-                        color: isSelected
-                          ? colors.accent
-                          : colors.textPrimary,
-                        fontWeight: isSelected ? '700' : '600',
+                        backgroundColor: isSelected
+                          ? colors.accentLight
+                          : colors.surfaceElevated,
                       },
                     ]}
                   >
-                    {opt.label}
-                  </Text>
-                  <Text
-                    style={[styles.optDesc, { color: colors.textTertiary }]}
-                  >
-                    {opt.description}
-                  </Text>
-                </View>
-
-                {isSelected && (
-                  <View
-                    style={[
-                      styles.checkCircle,
-                      { backgroundColor: colors.accent },
-                    ]}
-                  >
-                    <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                    {opt.icon(isSelected ? colors.accent : colors.textSecondary)}
                   </View>
+
+                  <View style={styles.textWrap}>
+                    <Text
+                      style={[
+                        styles.optLabel,
+                        { color: colors.textPrimary },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                    <Text
+                      style={[styles.optDesc, { color: colors.textTertiary }]}
+                    >
+                      {opt.description}
+                    </Text>
+                  </View>
+
+                  {isSelected && (
+                    <View
+                      style={[
+                        styles.checkCircle,
+                        { backgroundColor: colors.accent },
+                      ]}
+                    >
+                      <Check size={14} color="#000000" strokeWidth={2.6} />
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                {index < options.length - 1 && (
+                  <View
+                    style={[styles.divider, { backgroundColor: colors.border }]}
+                  />
                 )}
-              </TouchableOpacity>
+              </View>
             );
           })}
-        </View>
+        </Card>
       </View>
     </SafeAreaView>
   );
@@ -143,50 +143,56 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  backButton: {
+    padding: spacing.xs,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h3,
+    fontSize: 20,
   },
   content: {
     paddingHorizontal: spacing.xl,
-    gap: spacing.lg,
+    paddingTop: spacing.xs,
   },
-  caption: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.caption,
+  sectionHeader: {
+    marginBottom: spacing.xs,
   },
-  list: {
-    gap: spacing.md,
+  sectionTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: 0.8,
   },
-  optionCard: {
+  card: {
+    borderRadius: borderRadius.xl,
+  },
+  optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.lg,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1.5,
+    padding: spacing.md,
     gap: spacing.md,
   },
   iconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: borderRadius.md,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   textWrap: {
     flex: 1,
-    gap: 4,
   },
   optLabel: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.body,
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 15,
+    marginBottom: 2,
   },
   optDesc: {
     fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.caption,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
   },
   checkCircle: {
     width: 24,
@@ -194,5 +200,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  divider: {
+    height: 1,
+    marginLeft: 68,
   },
 });

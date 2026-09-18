@@ -16,6 +16,7 @@ import { AmountInput } from '@/components/ui/AmountInput';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
+import { Card } from '@/components/ui/Card';
 import { CategoryPicker } from '@/components/transaction/CategoryPicker';
 import { AccountPicker } from '@/components/transaction/AccountPicker';
 import { useTransactionStore } from '@/store/transactionStore';
@@ -26,7 +27,7 @@ import { useFriendStore } from '@/store/friendStore';
 import type { PaidByType } from '@/types';
 import { getTodayISO } from '@/utils/date';
 import { typography } from '@/theme/typography';
-import { spacing } from '@/theme/spacing';
+import { spacing, borderRadius, shadows } from '@/theme/spacing';
 
 export default function EditTransactionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -80,7 +81,7 @@ export default function EditTransactionScreen() {
       >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}>
-            <ArrowLeft size={24} color={colors.textPrimary} />
+            <ArrowLeft size={22} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
         <View style={styles.notFound}>
@@ -149,20 +150,6 @@ export default function EditTransactionScreen() {
         });
       }
 
-      // If total amount changed and equal split, adjust participant amounts proportionally
-      if (parsedAmount !== splitExpense.totalAmount && updatedParticipants && updatedParticipants.length > 0) {
-        const count = updatedParticipants.length;
-        const newEqual = Math.round((parsedAmount / count) * 100) / 100;
-        let runningTotal = 0;
-        updatedParticipants = updatedParticipants.map((p, idx) => {
-          if (idx === count - 1) {
-            return { ...p, amount: Math.round((parsedAmount - runningTotal) * 100) / 100 };
-          }
-          runningTotal += newEqual;
-          return { ...p, amount: newEqual };
-        });
-      }
-
       updateSplitExpense(
         splitExpense.id,
         {
@@ -174,32 +161,30 @@ export default function EditTransactionScreen() {
       );
     }
 
-    // 2. Update transaction: amount ALWAYS remains the full total bill amount
+    // 2. Update transaction
     updateTransaction(
       transaction.id,
       {
         amount: parsedAmount,
         categoryId,
-        accountId: accountId || transaction.accountId,
-        note: note.trim(),
+        accountId: isFriendPaid ? (transaction.accountId || accounts[0]?.id || '') : accountId,
+        note: note.trim() || undefined,
       },
       {
         skipBalanceUpdate: isFriendPaid,
-        wasPaidByFriend,
+        wasPaidByFriend: splitExpense ? splitExpense.paidByType === 'friend' : false,
       }
     );
 
     router.back();
   };
 
-  const isValid =
-    parseFloat(amount) > 0 &&
-    (isFriendPaid || Boolean(accountId)) &&
-    (!splitExpense || paidByType === 'me' || (isFriendPaid && Boolean(payerFriend)));
+  const isValid = parseFloat(amount) > 0 && (isFriendPaid || Boolean(accountId));
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -207,13 +192,17 @@ export default function EditTransactionScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-            <ArrowLeft size={24} color={colors.textPrimary} />
+          <TouchableOpacity
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+            style={styles.backButton}
+          >
+            <ArrowLeft size={22} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.textPrimary }]}>
             Edit Transaction
           </Text>
-          <View style={{ width: 24 }} />
+          <View style={{ width: 36 }} />
         </View>
 
         <ScrollView
@@ -228,17 +217,12 @@ export default function EditTransactionScreen() {
             <>
               <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-                  Paid By
+                  PAID BY
                 </Text>
               </View>
-              <View
-                style={[
-                  styles.payerContainer,
-                  {
-                    backgroundColor: colors.surfaceElevated,
-                    borderColor: colors.border,
-                  },
-                ]}
+              <Card
+                padding="none"
+                style={styles.payerContainer}
               >
                 {/* Option: Me */}
                 <TouchableOpacity
@@ -300,32 +284,29 @@ export default function EditTransactionScreen() {
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </Card>
             </>
           )}
 
           {/* Account Picker or Friend Paid Notice */}
           {isFriendPaid ? (
-            <View
-              style={[
-                styles.friendPaidInfo,
-                {
-                  backgroundColor: colors.surfaceElevated,
-                  borderColor: colors.border,
-                },
-              ]}
+            <Card
+              padding="md"
+              style={styles.friendPaidInfo}
             >
-              <Users size={18} color={colors.accent} />
-              <Text style={[styles.friendPaidInfoText, { color: colors.textSecondary }]}>
-                {payerFriend?.name || 'Friend'} paid the full bill • No money deducted from your accounts
-              </Text>
-            </View>
+              <View style={styles.friendPaidRow}>
+                <Users size={18} color={colors.accent} />
+                <Text style={[styles.friendPaidInfoText, { color: colors.textSecondary }]}>
+                  {payerFriend?.name || 'Friend'} paid the full bill • No money deducted from your accounts
+                </Text>
+              </View>
+            </Card>
           ) : (
             <>
               {splitExpense && (
                 <View style={styles.sectionHeader}>
                   <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-                    Paid From Account
+                    PAID FROM ACCOUNT
                   </Text>
                 </View>
               )}
@@ -360,7 +341,7 @@ export default function EditTransactionScreen() {
         </ScrollView>
 
         {/* Submit */}
-        <View style={styles.bottom}>
+        <View style={[styles.bottom, { backgroundColor: colors.background }]}>
           <Button
             title="Save Changes"
             onPress={handleSave}
@@ -386,11 +367,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  backButton: {
+    padding: spacing.xs,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h3,
+    fontSize: 20,
   },
   noteContainer: {
     paddingHorizontal: spacing.xl,
@@ -399,7 +384,7 @@ const styles = StyleSheet.create({
   bottom: {
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing['2xl'],
-    marginTop: spacing.lg,
+    paddingTop: spacing.sm,
   },
   notFound: {
     flex: 1,
@@ -408,20 +393,17 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     paddingHorizontal: spacing.xl,
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     marginBottom: spacing.xs,
   },
   sectionTitle: {
-    fontSize: 12,
-    fontFamily: typography.fontFamily.medium,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontSize: 11,
+    fontFamily: typography.fontFamily.bold,
+    letterSpacing: 0.8,
   },
   payerContainer: {
     marginHorizontal: spacing.xl,
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
+    borderRadius: borderRadius.xl,
   },
   payerRow: {
     flexDirection: 'row',
@@ -437,17 +419,17 @@ const styles = StyleSheet.create({
   },
   payerName: {
     fontSize: 15,
-    fontFamily: typography.fontFamily.medium,
+    fontFamily: typography.fontFamily.semiBold,
   },
   friendPaidInfo: {
+    marginHorizontal: spacing.xl,
+    borderRadius: borderRadius.xl,
+    marginTop: spacing.sm,
+  },
+  friendPaidRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginHorizontal: spacing.xl,
-    padding: spacing.md,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginTop: spacing.sm,
   },
   friendPaidInfoText: {
     flex: 1,
@@ -456,4 +438,3 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
-

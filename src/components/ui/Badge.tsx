@@ -4,11 +4,21 @@ import { useTheme } from '@/hooks/useTheme';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
 
+export type BadgeVariant =
+  | 'default'
+  | 'success'
+  | 'warning'
+  | 'error'
+  | 'expense'
+  | 'income'
+  | 'transfer'
+  | 'neutral';
+
 interface BadgeProps {
   label?: string;
   children?: React.ReactNode;
   color?: string;
-  variant?: 'default' | 'success' | 'warning' | 'error';
+  variant?: BadgeVariant;
   style?: ViewStyle;
   size?: 'sm' | 'md';
 }
@@ -17,29 +27,37 @@ export const Badge: React.FC<BadgeProps> = ({
   label,
   children,
   color,
-  variant,
+  variant = 'default',
   style,
   size = 'sm',
 }) => {
   const { colors } = useTheme();
 
-  const getVariantColor = () => {
-    if (color) return color;
+  const getBadgeColors = (): { bg: string; text: string } => {
+    if (color) {
+      return { bg: `${color}18`, text: color };
+    }
+
     switch (variant) {
-      case 'success':
-        return colors.income;
-      case 'warning':
-        return '#F59E0B';
+      case 'expense':
       case 'error':
-        return colors.expense;
+        return { bg: colors.expenseLight, text: colors.expense };
+      case 'income':
+      case 'success':
+        return { bg: colors.incomeLight, text: colors.income };
+      case 'transfer':
+        return { bg: colors.transferLight, text: colors.transfer };
+      case 'neutral':
+        return { bg: colors.pastelNeutral, text: colors.pastelNeutralText };
+      case 'warning':
+        return { bg: '#FEF3C7', text: '#D97706' };
+      case 'default':
       default:
-        return colors.accent;
+        return { bg: colors.surfaceElevated, text: colors.textSecondary };
     }
   };
 
-  const activeColor = getVariantColor();
-  const bgColor = `${activeColor}20`;
-  const textColor = activeColor;
+  const { bg, text } = getBadgeColors();
   const content = label || children;
 
   return (
@@ -47,8 +65,8 @@ export const Badge: React.FC<BadgeProps> = ({
       style={[
         styles.badge,
         {
-          backgroundColor: bgColor,
-          paddingVertical: size === 'sm' ? spacing.xs : spacing.sm,
+          backgroundColor: bg,
+          paddingVertical: size === 'sm' ? 3 : 5,
           paddingHorizontal: size === 'sm' ? spacing.sm : spacing.md,
         },
         style,
@@ -58,9 +76,9 @@ export const Badge: React.FC<BadgeProps> = ({
         style={[
           styles.text,
           {
-            color: textColor,
-            fontSize:
-              size === 'sm' ? typography.fontSize.tiny : typography.fontSize.caption,
+            color: text,
+            fontSize: size === 'sm' ? 11 : 12,
+            fontFamily: typography.fontFamily.semiBold,
           },
         ]}
         numberOfLines={1}
@@ -75,8 +93,10 @@ const styles = StyleSheet.create({
   badge: {
     borderRadius: borderRadius.full,
     alignSelf: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   text: {
-    fontFamily: typography.fontFamily.semiBold,
+    letterSpacing: 0.2,
   },
 });

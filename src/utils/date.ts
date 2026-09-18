@@ -45,6 +45,26 @@ export const formatDateHeader = (dateString: string): string => {
 };
 
 /**
+ * Format date for Activity group header: "SEPTEMBER 15 · Sunday"
+ */
+export const formatActivityDateHeader = (dateString: string): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.floor((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
+
+  const dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()];
+  const monthName = MONTHS[date.getMonth()].toUpperCase();
+  const dayOfMonth = date.getDate();
+
+  if (diffDays === 0) return `TODAY · ${dayOfWeek}`;
+  if (diffDays === 1) return `YESTERDAY · ${dayOfWeek}`;
+
+  return `${monthName} ${dayOfMonth} · ${dayOfWeek}`;
+};
+
+/**
  * Format for month display: "September 2025"
  */
 export const formatMonth = (date: Date): string => {

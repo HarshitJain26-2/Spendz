@@ -23,7 +23,7 @@ export const useAppStore = create<AppState>((set) => ({
   hasOnboarded: false,
   setHasOnboarded: (value) => set({ hasOnboarded: value }),
 
-  themeMode: 'system',
+  themeMode: 'light',
   setThemeMode: (mode) => set({ themeMode: mode }),
 
   userProfile: {

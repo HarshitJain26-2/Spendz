@@ -1,11 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   TextInput,
   Image,
 } from 'react-native';
@@ -17,20 +16,24 @@ import {
   Palette,
   User,
   ChevronRight,
-  Info,
   RotateCcw,
   Check,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
+import { useBottomTabInset } from '@/hooks/useBottomTabInset';
 import { useAppStore } from '@/store/appStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useCategoryStore } from '@/store/categoryStore';
+import { Card } from '@/components/ui/Card';
+import { Avatar } from '@/components/ui/Avatar';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
+import { showAlert } from '@/utils/alert';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const bottomTabInset = useBottomTabInset(spacing.lg);
 
   const userProfile = useAppStore((s) => s.userProfile);
   const setUserProfile = useAppStore((s) => s.setUserProfile);
@@ -58,40 +61,74 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleResetData = () => {
+    showAlert(
+      'Reset All Data',
+      'Are you sure you want to reset all data? This will restore the app to factory settings. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset Everything',
+          style: 'destructive',
+          onPress: () => {
+            useAppStore.getState().setHasOnboarded(false);
+            router.replace('/onboarding' as any);
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={['top', 'left', 'right']}
     >
-      {/* Header */}
+      {/* 1. App Top Header */}
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
+        <View style={styles.logoGroup}>
+          <Image
+            source={require('@/assets/images/spendz-logo.png')}
+            style={styles.logoBadge}
+            resizeMode="contain"
+          />
+          <View>
+            <Text style={[styles.brandName, { color: colors.textPrimary }]}>
+              Spendz
+            </Text>
+            <Text style={[styles.brandSubtitle, { color: colors.textTertiary }]}>
+              Settings
+            </Text>
+          </View>
+        </View>
+
+        <Avatar name={userProfile.name || 'You'} size={36} />
+      </View>
+
+      {/* 2. Page Title Row */}
+      <View style={styles.titleRow}>
+        <Text style={[styles.pageTitle, { color: colors.textPrimary }]}>
           Settings
         </Text>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: bottomTabInset },
+        ]}
       >
         {/* Profile Card */}
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceElevated,
-              borderColor: colors.border,
-            },
-          ]}
-        >
+        <Card style={styles.profileCard} padding="md">
           <View style={styles.profileRow}>
             <View
               style={[
-                styles.profileIconWrap,
-                { backgroundColor: colors.accent + '20' },
+                styles.iconContainer,
+                { backgroundColor: colors.accentLight },
               ]}
             >
-              <User size={24} color={colors.accent} />
+              <User size={22} color={colors.accent} strokeWidth={2.2} />
             </View>
 
             <View style={styles.profileInfo}>
@@ -115,7 +152,7 @@ export default function SettingsScreen() {
                       { backgroundColor: colors.accent },
                     ]}
                   >
-                    <Check size={16} color="#FFFFFF" strokeWidth={2.5} />
+                    <Check size={16} color="#000000" strokeWidth={2.4} />
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -137,30 +174,22 @@ export default function SettingsScreen() {
                       { color: colors.textTertiary },
                     ]}
                   >
-                    Tap to edit profile name
+                    Tap to edit profile
                   </Text>
                 </TouchableOpacity>
               )}
             </View>
           </View>
-        </View>
+        </Card>
 
-        {/* Preferences / Management Section */}
+        {/* Section: PREFERENCES & MANAGEMENT */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            Preferences & Management
+            PREFERENCES & MANAGEMENT
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceElevated,
-              borderColor: colors.border,
-            },
-          ]}
-        >
+        <Card padding="none" style={styles.groupedCard}>
           {/* Accounts */}
           <TouchableOpacity
             onPress={() => router.push('/settings/accounts' as any)}
@@ -170,11 +199,11 @@ export default function SettingsScreen() {
             <View style={styles.menuLeft}>
               <View
                 style={[
-                  styles.menuIcon,
-                  { backgroundColor: colors.accent + '15' },
+                  styles.iconContainer,
+                  { backgroundColor: colors.surfaceElevated },
                 ]}
               >
-                <Wallet size={18} color={colors.accent} />
+                <Wallet size={20} color={colors.accent} strokeWidth={2} />
               </View>
               <View>
                 <Text
@@ -206,11 +235,11 @@ export default function SettingsScreen() {
             <View style={styles.menuLeft}>
               <View
                 style={[
-                  styles.menuIcon,
-                  { backgroundColor: colors.transfer + '15' },
+                  styles.iconContainer,
+                  { backgroundColor: colors.surfaceElevated },
                 ]}
               >
-                <Tag size={18} color={colors.transfer} />
+                <Tag size={20} color={colors.accent} strokeWidth={2} />
               </View>
               <View>
                 <Text
@@ -241,11 +270,11 @@ export default function SettingsScreen() {
             <View style={styles.menuLeft}>
               <View
                 style={[
-                  styles.menuIcon,
-                  { backgroundColor: colors.income + '15' },
+                  styles.iconContainer,
+                  { backgroundColor: colors.surfaceElevated },
                 ]}
               >
-                <Palette size={18} color={colors.income} />
+                <Palette size={20} color={colors.accent} strokeWidth={2} />
               </View>
               <View>
                 <Text
@@ -262,46 +291,73 @@ export default function SettingsScreen() {
             </View>
             <ChevronRight size={18} color={colors.textTertiary} />
           </TouchableOpacity>
-        </View>
+        </Card>
 
-        {/* App Info Section */}
+        {/* Section: DATA & STORAGE */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            About
+            DATA & BACKUP
           </Text>
         </View>
 
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceElevated,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <View style={styles.infoRow}>
+        <Card padding="none" style={styles.groupedCard}>
+          <TouchableOpacity
+            onPress={handleResetData}
+            style={styles.menuRow}
+            activeOpacity={0.7}
+          >
             <View style={styles.menuLeft}>
-              <Image
-                source={require('@/assets/images/spendz-logo.png')}
-                style={styles.aboutLogo}
-                resizeMode="contain"
-              />
+              <View
+                style={[
+                  styles.iconContainer,
+                  { backgroundColor: colors.expenseLight },
+                ]}
+              >
+                <RotateCcw size={18} color={colors.expense} strokeWidth={2} />
+              </View>
               <View>
-                <Text
-                  style={[styles.menuTitle, { color: colors.textPrimary }]}
-                >
-                  Spendz
+                <Text style={[styles.menuTitle, { color: colors.expense }]}>
+                  Reset All Data
                 </Text>
                 <Text
                   style={[styles.menuSub, { color: colors.textTertiary }]}
                 >
-                  Version 1.0.0 • Offline-first SQLite
+                  Clear all local transactions and accounts
                 </Text>
               </View>
             </View>
-          </View>
+            <ChevronRight size={18} color={colors.textTertiary} />
+          </TouchableOpacity>
+        </Card>
+
+        {/* Section: ABOUT */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+            ABOUT
+          </Text>
         </View>
+
+        <Card padding="md" style={styles.groupedCard}>
+          <View style={styles.aboutRow}>
+            <Image
+              source={require('@/assets/images/spendz-logo.png')}
+              style={styles.aboutLogo}
+              resizeMode="contain"
+            />
+            <View style={styles.aboutText}>
+              <Text
+                style={[styles.menuTitle, { color: colors.textPrimary }]}
+              >
+                Spendz
+              </Text>
+              <Text
+                style={[styles.menuSub, { color: colors.textTertiary }]}
+              >
+                Version 1.0.0 · Local-First Expense Tracker
+              </Text>
+            </View>
+          </View>
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );
@@ -312,34 +368,60 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
+    paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
   },
-  title: {
+  logoGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  logoBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+  },
+  brandName: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h2,
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  brandSubtitle: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  titleRow: {
+    paddingHorizontal: spacing.xl,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  pageTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 26,
+    letterSpacing: -0.5,
   },
   scrollContent: {
     paddingHorizontal: spacing.xl,
-    paddingBottom: 40,
-    gap: spacing.lg,
+    paddingTop: spacing.xs,
+    gap: spacing.md,
   },
-  card: {
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
+  profileCard: {
+    marginBottom: spacing.xs,
   },
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.lg,
     gap: spacing.md,
   },
-  profileIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  iconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -348,12 +430,12 @@ const styles = StyleSheet.create({
   },
   profileName: {
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.h4,
+    fontSize: 16,
     marginBottom: 2,
   },
   profileSub: {
     fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.caption,
+    fontSize: 12,
   },
   nameEditRow: {
     flexDirection: 'row',
@@ -363,10 +445,10 @@ const styles = StyleSheet.create({
   nameInput: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: borderRadius.md,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    fontSize: typography.fontSize.body,
+    paddingVertical: 6,
+    fontSize: 15,
   },
   saveBtn: {
     width: 32,
@@ -376,21 +458,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sectionHeader: {
-    marginBottom: -spacing.sm,
+    marginTop: spacing.xs,
+    marginBottom: -spacing.xs,
   },
   sectionTitle: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.caption,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: 0.8,
+  },
+  groupedCard: {
+    borderRadius: borderRadius.xl,
   },
   menuRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
-  },
-  infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -400,30 +479,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-  },
-  menuIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flex: 1,
   },
   menuTitle: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.body,
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 15,
     marginBottom: 2,
   },
   menuSub: {
     fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.caption,
+    fontSize: 12,
+  },
+  divider: {
+    height: 1,
+    marginLeft: 68,
+  },
+  aboutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   aboutLogo: {
     width: 40,
     height: 40,
-    borderRadius: 10,
+    borderRadius: 12,
   },
-  divider: {
-    height: 1,
-    marginHorizontal: spacing.md,
+  aboutText: {
+    flex: 1,
   },
 });

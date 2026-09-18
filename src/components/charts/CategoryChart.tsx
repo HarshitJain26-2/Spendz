@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '@/hooks/useTheme';
+import { Card } from '@/components/ui/Card';
 import { DynamicIcon } from '@/components/ui/DynamicIcon';
 import { formatCurrency } from '@/utils/currency';
 import { typography } from '@/theme/typography';
@@ -20,32 +21,16 @@ export const CategoryChart: React.FC<CategoryChartProps> = ({
 
   if (data.length === 0 || totalExpense === 0) {
     return (
-      <View
-        style={[
-          styles.emptyContainer,
-          {
-            backgroundColor: colors.surfaceElevated,
-            borderColor: colors.border,
-          },
-        ]}
-      >
-        <Text style={{ color: colors.textSecondary }}>
+      <Card padding="lg" style={styles.emptyContainer}>
+        <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>
           No expense data for this period
         </Text>
-      </View>
+      </Card>
     );
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.surfaceElevated,
-          borderColor: colors.border,
-        },
-      ]}
-    >
+    <Card padding="lg" style={styles.card}>
       <Text style={[styles.title, { color: colors.textPrimary }]}>
         Spending by Category
       </Text>
@@ -74,12 +59,12 @@ export const CategoryChart: React.FC<CategoryChartProps> = ({
               <View
                 style={[
                   styles.iconWrap,
-                  { backgroundColor: `${item.category.color}20` },
+                  { backgroundColor: `${item.category.color}15` },
                 ]}
               >
                 <DynamicIcon
                   name={item.category.icon}
-                  size={16}
+                  size={18}
                   color={item.category.color}
                 />
               </View>
@@ -104,25 +89,26 @@ export const CategoryChart: React.FC<CategoryChartProps> = ({
           </View>
         ))}
       </View>
-    </View>
+    </Card>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    padding: spacing.lg,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
+  card: {
     gap: spacing.md,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.h4,
+    fontSize: 16,
   },
   barContainer: {
     flexDirection: 'row',
-    height: 12,
-    borderRadius: 6,
+    height: 10,
+    borderRadius: borderRadius.full,
     overflow: 'hidden',
     gap: 2,
     marginVertical: spacing.xs,
@@ -143,31 +129,27 @@ const styles = StyleSheet.create({
   itemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
+    flex: 1,
   },
   iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   categoryName: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.body,
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 14,
+    marginBottom: 2,
   },
   categoryPercent: {
     fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.tiny,
+    fontSize: 12,
   },
   itemAmount: {
-    fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.body,
-  },
-  emptyContainer: {
-    padding: spacing.xl,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    alignItems: 'center',
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 15,
   },
 });

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,30 +12,23 @@ import {
   ArrowLeft,
   Edit2,
   Trash2,
-  ArrowDownLeft,
-  ArrowUpRight,
-  ArrowLeftRight,
-  Calendar,
-  CreditCard,
-  Tag,
-  FileText,
-  Users,
   CheckCircle2,
   Clock,
+  Landmark,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useTransactionStore } from '@/store/transactionStore';
 import { useCategoryStore } from '@/store/categoryStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useSplitStore } from '@/store/splitStore';
-import { DynamicIcon } from '@/components/ui/DynamicIcon';
-import { Badge } from '@/components/ui/Badge';
+import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
+import { getCategoryEmoji } from '@/components/transaction/CategorySelectorCard';
 import { formatCurrency } from '@/utils/currency';
 import { formatFullDateTime } from '@/utils/date';
 import { typography } from '@/theme/typography';
-import { spacing } from '@/theme/spacing';
+import { spacing, borderRadius, shadows } from '@/theme/spacing';
 import { showAlert } from '@/utils/alert';
 
 export default function TransactionDetailScreen() {
@@ -65,7 +57,7 @@ export default function TransactionDetailScreen() {
       >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-            <ArrowLeft size={24} color={colors.textPrimary} />
+            <ArrowLeft size={22} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
         <View style={styles.notFound}>
@@ -85,6 +77,11 @@ export default function TransactionDetailScreen() {
     ? accounts.find((a) => a.id === transaction.toAccountId)
     : null;
 
+  const emoji =
+    transaction.type === 'transfer'
+      ? '🔄'
+      : getCategoryEmoji(category?.id, category?.name);
+
   const handleDelete = () => {
     showAlert(
       'Delete Transaction',
@@ -103,235 +100,188 @@ export default function TransactionDetailScreen() {
     );
   };
 
-  const getTypeTheme = () => {
-    switch (transaction.type) {
-      case 'expense':
-        return {
-          label: 'Expense',
-          color: colors.expense,
-          sign: '-',
-          icon: <ArrowDownLeft size={20} color={colors.expense} />,
-        };
-      case 'income':
-        return {
-          label: 'Income',
-          color: colors.income,
-          sign: '+',
-          icon: <ArrowUpRight size={20} color={colors.income} />,
-        };
-      case 'transfer':
-        return {
-          label: 'Transfer',
-          color: colors.transfer,
-          sign: '',
-          icon: <ArrowLeftRight size={20} color={colors.transfer} />,
-        };
-    }
-  };
-
-  const typeTheme = getTypeTheme();
+  const isIncome = transaction.type === 'income';
+  const isExpense = transaction.type === 'expense';
+  const amountSign = isExpense ? '-' : isIncome ? '+' : '';
+  const amountColor = isIncome ? colors.income : colors.textPrimary;
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          <ArrowLeft size={24} color={colors.textPrimary} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          style={styles.backButton}
+        >
+          <ArrowLeft size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          Details
+          Transaction
         </Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            onPress={() =>
-              router.push({
-                pathname: '/transaction/edit' as any,
-                params: { id: transaction.id },
-              })
-            }
-            activeOpacity={0.7}
-            style={styles.actionBtn}
-          >
-            <Edit2 size={20} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleDelete}
-            activeOpacity={0.7}
-            style={styles.actionBtn}
-          >
-            <Trash2 size={20} color={colors.expense} />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={handleDelete}
+          activeOpacity={0.7}
+          style={[
+            styles.deleteIconButton,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <Trash2 size={18} color={colors.expense} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Hero Card */}
-        <View
-          style={[
-            styles.heroCard,
-            {
-              backgroundColor: colors.surfaceElevated,
-              borderColor: colors.border,
-            },
-          ]}
-        >
+        {/* Top Hero Section */}
+        <View style={styles.heroSection}>
           <View
             style={[
-              styles.typeBadge,
-              { backgroundColor: typeTheme.color + '18' },
+              styles.emojiBox,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              shadows.sm,
             ]}
           >
-            {typeTheme.icon}
-            <Text style={[styles.typeText, { color: typeTheme.color }]}>
-              {typeTheme.label}
-            </Text>
+            <Text style={styles.emojiText}>{emoji}</Text>
           </View>
 
-          <Text style={[styles.amountText, { color: typeTheme.color }]}>
-            {typeTheme.sign}
-            {formatCurrency(transaction.amount)}
+          <Text
+            style={[styles.transactionTitle, { color: colors.textPrimary }]}
+            numberOfLines={2}
+          >
+            {transaction.note || category?.name || 'Transaction'}
           </Text>
 
-          <Text style={[styles.dateText, { color: colors.textSecondary }]}>
-            {formatFullDateTime(transaction.date)}
-          </Text>
-        </View>
-
-        {/* Details List */}
-        <View
-          style={[
-            styles.detailsCard,
-            {
-              backgroundColor: colors.surfaceElevated,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          {/* Category */}
-          {transaction.type !== 'transfer' && (
-            <View style={styles.row}>
-              <View style={styles.rowLeft}>
-                <Tag size={18} color={colors.textTertiary} />
-                <Text style={[styles.rowLabel, { color: colors.textSecondary }]}>
-                  Category
-                </Text>
-              </View>
-              <View style={styles.rowRight}>
-                {category ? (
-                  <View style={styles.categoryBadge}>
-                    <DynamicIcon
-                      name={category.icon}
-                      size={16}
-                      color={category.color}
-                    />
-                    <Text
-                      style={[
-                        styles.categoryName,
-                        { color: colors.textPrimary },
-                      ]}
-                    >
-                      {category.name}
-                    </Text>
-                  </View>
-                ) : (
-                  <Text style={{ color: colors.textTertiary }}>
-                    Uncategorized
-                  </Text>
-                )}
-              </View>
+          {category && (
+            <View
+              style={[
+                styles.categoryBadge,
+                { backgroundColor: colors.surfaceElevated },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.categoryBadgeText,
+                  { color: colors.textSecondary },
+                ]}
+              >
+                {category.name}
+              </Text>
             </View>
           )}
 
-          {/* Account */}
-          <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <CreditCard size={18} color={colors.textTertiary} />
-              <Text style={[styles.rowLabel, { color: colors.textSecondary }]}>
-                {transaction.type === 'transfer' ? 'From Account' : 'Account'}
+          <Text style={[styles.amountText, { color: amountColor }]}>
+            {amountSign}
+            {formatCurrency(transaction.amount)}
+          </Text>
+        </View>
+
+        {/* Details Card */}
+        <Card style={styles.detailsCard} padding="lg">
+          {/* Paid From */}
+          <View style={styles.detailRow}>
+            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+              {transaction.type === 'transfer' ? 'FROM ACCOUNT' : 'PAID FROM'}
+            </Text>
+            <View style={styles.accountValRow}>
+              <Landmark size={16} color={colors.textSecondary} />
+              <Text
+                style={[styles.detailValue, { color: colors.textPrimary }]}
+              >
+                {account?.name || 'Account'}
               </Text>
             </View>
-            <Text style={[styles.rowValue, { color: colors.textPrimary }]}>
-              {account?.name || 'Unknown Account'}
-            </Text>
           </View>
 
           {/* To Account (if transfer) */}
           {transaction.type === 'transfer' && toAccount && (
-            <View style={styles.row}>
-              <View style={styles.rowLeft}>
-                <CreditCard size={18} color={colors.textTertiary} />
-                <Text style={[styles.rowLabel, { color: colors.textSecondary }]}>
-                  To Account
+            <View style={[styles.detailRow, styles.rowBorderTop, { borderTopColor: colors.border }]}>
+              <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                TO ACCOUNT
+              </Text>
+              <View style={styles.accountValRow}>
+                <Landmark size={16} color={colors.textSecondary} />
+                <Text
+                  style={[styles.detailValue, { color: colors.textPrimary }]}
+                >
+                  {toAccount.name}
                 </Text>
               </View>
-              <Text style={[styles.rowValue, { color: colors.textPrimary }]}>
-                {toAccount.name}
-              </Text>
             </View>
           )}
 
+          {/* Date & Time */}
+          <View style={[styles.detailRow, styles.rowBorderTop, { borderTopColor: colors.border }]}>
+            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+              DATE & TIME
+            </Text>
+            <Text style={[styles.detailValue, { color: colors.textPrimary }]}>
+              {formatFullDateTime(transaction.date)}
+            </Text>
+          </View>
+
           {/* Note */}
           {Boolean(transaction.note) && (
-            <View style={[styles.row, { borderBottomWidth: 0 }]}>
-              <View style={styles.rowLeft}>
-                <FileText size={18} color={colors.textTertiary} />
-                <Text style={[styles.rowLabel, { color: colors.textSecondary }]}>
-                  Note
-                </Text>
-              </View>
-              <Text
-                style={[
-                  styles.rowValue,
-                  { color: colors.textPrimary, flex: 1, textAlign: 'right' },
-                ]}
-              >
+            <View style={[styles.detailRow, styles.rowBorderTop, { borderTopColor: colors.border }]}>
+              <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                NOTE
+              </Text>
+              <Text style={[styles.detailValue, { color: colors.textPrimary }]}>
                 {transaction.note}
               </Text>
             </View>
           )}
-        </View>
+        </Card>
 
-        {/* Split Details (if linked) */}
+        {/* Split Details Card (if linked) */}
         {splitExpense && splitExpense.participants && (
-          <View
-            style={[
-              styles.splitCard,
-              {
-                backgroundColor: colors.surfaceElevated,
-                borderColor: colors.border,
-              },
-            ]}
-          >
+          <Card style={styles.detailsCard} padding="lg">
             <View style={styles.splitHeader}>
-              <View style={styles.splitTitleWrap}>
-                <Users size={18} color={colors.accent} />
+              <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                SPLIT PARTICIPANTS ({splitExpense.participants.length})
+              </Text>
+              <View
+                style={[
+                  styles.splitStatusPill,
+                  {
+                    backgroundColor:
+                      splitExpense.status === 'settled'
+                        ? colors.incomeLight
+                        : colors.pastelNeutral,
+                  },
+                ]}
+              >
                 <Text
-                  style={[styles.splitTitle, { color: colors.textPrimary }]}
+                  style={[
+                    styles.splitStatusText,
+                    {
+                      color:
+                        splitExpense.status === 'settled'
+                          ? colors.income
+                          : colors.pastelNeutralText,
+                    },
+                  ]}
                 >
-                  Split Details
+                  {splitExpense.status.toUpperCase()}
                 </Text>
               </View>
-              <Badge
-                variant={
-                  splitExpense.status === 'settled' ? 'success' : 'warning'
-                }
-              >
-                {splitExpense.status.toUpperCase()}
-              </Badge>
             </View>
 
-            {splitExpense.participants.map((p) => (
+            {splitExpense.participants.map((p, idx) => (
               <View
                 key={p.id}
-                style={[styles.participantRow, { borderTopColor: colors.border }]}
+                style={[
+                  styles.participantRow,
+                  idx > 0 && { borderTopColor: colors.border, borderTopWidth: 1 },
+                ]}
               >
                 <View style={styles.participantLeft}>
-                  <Avatar name={p.name} size={32} />
+                  <Avatar name={p.name} size={34} />
                   <Text
                     style={[
                       styles.participantName,
@@ -351,26 +301,46 @@ export default function TransactionDetailScreen() {
                   >
                     {formatCurrency(p.amount)}
                   </Text>
-                  {p.isPaid ? (
-                    <View style={styles.statusPaid}>
-                      <CheckCircle2 size={14} color={colors.income} />
-                      <Text style={{ color: colors.income, fontSize: 12 }}>
-                        Paid
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.statusUnpaid}>
-                      <Clock size={14} color={colors.expense} />
-                      <Text style={{ color: colors.expense, fontSize: 12 }}>
-                        Owes
-                      </Text>
-                    </View>
-                  )}
+                  <View
+                    style={[
+                      styles.partStatusBadge,
+                      {
+                        backgroundColor: p.isPaid
+                          ? colors.incomeLight
+                          : colors.expenseLight,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.partStatusText,
+                        { color: p.isPaid ? colors.income : colors.expense },
+                      ]}
+                    >
+                      {p.isPaid ? 'Paid' : 'Pending'}
+                    </Text>
+                  </View>
                 </View>
               </View>
             ))}
-          </View>
+          </Card>
         )}
+
+        {/* Action Buttons */}
+        <View style={styles.actions}>
+          <Button
+            title="Edit Transaction"
+            icon={<Edit2 size={18} color="#000000" />}
+            onPress={() =>
+              router.push({
+                pathname: '/transaction/edit' as any,
+                params: { id: transaction.id },
+              })
+            }
+            size="lg"
+            fullWidth
+          />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -385,118 +355,113 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  backButton: {
+    padding: spacing.xs,
   },
   headerTitle: {
-    fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.h3,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 20,
   },
-  headerActions: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  actionBtn: {
-    padding: 4,
-  },
-  notFound: {
-    flex: 1,
+  deleteIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
   },
   scrollContent: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
     paddingBottom: 40,
     gap: spacing.lg,
   },
-  heroCard: {
+  heroSection: {
     alignItems: 'center',
-    padding: spacing.xl,
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  emojiBox: {
+    width: 64,
+    height: 64,
     borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
-    gap: spacing.sm,
+    marginBottom: spacing.xs,
   },
-  typeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
+  emojiText: {
+    fontSize: 30,
   },
-  typeText: {
-    fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.small,
+  transactionTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 22,
+    textAlign: 'center',
+  },
+  categoryBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: borderRadius.full,
+    marginTop: 2,
+  },
+  categoryBadgeText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
   },
   amountText: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.hero,
-  },
-  dateText: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.small,
+    fontSize: 34,
+    letterSpacing: -0.5,
+    marginTop: spacing.xs,
   },
   detailsCard: {
-    padding: spacing.lg,
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: borderRadius.xl,
+    gap: spacing.md,
   },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
+  detailRow: {
+    gap: 4,
   },
-  rowLeft: {
+  rowBorderTop: {
+    borderTopWidth: 1,
+    paddingTop: spacing.md,
+  },
+  detailLabel: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: 0.8,
+  },
+  detailValue: {
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 15,
+  },
+  accountValRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-  },
-  rowLabel: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.body,
-  },
-  rowRight: {
-    alignItems: 'flex-end',
-  },
-  rowValue: {
-    fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.body,
-  },
-  categoryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryName: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.body,
-  },
-  splitCard: {
-    padding: spacing.lg,
-    borderRadius: 16,
-    borderWidth: 1,
   },
   splitHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
   },
-  splitTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+  splitStatusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: borderRadius.full,
   },
-  splitTitle: {
+  splitStatusText: {
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.h4,
+    fontSize: 11,
   },
   participantRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.md,
-    borderTopWidth: 1,
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
   },
   participantLeft: {
     flexDirection: 'row',
@@ -504,25 +469,33 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   participantName: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.body,
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 14,
   },
   participantRight: {
-    alignItems: 'flex-end',
-    gap: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   participantAmount: {
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.body,
+    fontSize: 14,
   },
-  statusPaid: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  partStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: borderRadius.full,
   },
-  statusUnpaid: {
-    flexDirection: 'row',
+  partStatusText: {
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 11,
+  },
+  actions: {
+    marginTop: spacing.xs,
+  },
+  notFound: {
+    flex: 1,
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
   },
 });

@@ -23,7 +23,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
 
   return (
     <Animated.View entering={FadeIn.delay(200).duration(500)}>
-      <Card style={styles.card}>
+      <Card style={styles.card} padding="lg">
         <Text style={[styles.label, { color: colors.textSecondary }]}>
           Total Balance
         </Text>
@@ -36,18 +36,21 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
           <View
             style={[
               styles.breakdownItem,
-              { backgroundColor: colors.surfaceElevated },
+              {
+                backgroundColor: colors.surfaceElevated,
+                borderColor: colors.border,
+              },
             ]}
           >
             <View
               style={[
                 styles.breakdownIcon,
-                { backgroundColor: '#22C55E20' },
+                { backgroundColor: colors.incomeLight },
               ]}
             >
-              <Wallet size={16} color="#22C55E" strokeWidth={2} />
+              <Wallet size={18} color={colors.income} strokeWidth={2} />
             </View>
-            <View>
+            <View style={styles.breakdownTextWrap}>
               <Text
                 style={[styles.breakdownLabel, { color: colors.textSecondary }]}
               >
@@ -58,6 +61,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
                   styles.breakdownAmount,
                   { color: colors.textPrimary },
                 ]}
+                numberOfLines={1}
               >
                 {formatCurrency(cashBalance)}
               </Text>
@@ -68,18 +72,21 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
           <View
             style={[
               styles.breakdownItem,
-              { backgroundColor: colors.surfaceElevated },
+              {
+                backgroundColor: colors.surfaceElevated,
+                borderColor: colors.border,
+              },
             ]}
           >
             <View
               style={[
                 styles.breakdownIcon,
-                { backgroundColor: '#3B82F620' },
+                { backgroundColor: colors.transferLight },
               ]}
             >
-              <Smartphone size={16} color="#3B82F6" strokeWidth={2} />
+              <Smartphone size={18} color={colors.transfer} strokeWidth={2} />
             </View>
-            <View>
+            <View style={styles.breakdownTextWrap}>
               <Text
                 style={[styles.breakdownLabel, { color: colors.textSecondary }]}
               >
@@ -90,6 +97,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
                   styles.breakdownAmount,
                   { color: colors.textPrimary },
                 ]}
+                numberOfLines={1}
               >
                 {formatCurrency(onlineBalance)}
               </Text>
@@ -114,7 +122,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     fontSize: typography.fontSize.hero,
     letterSpacing: -1,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   breakdown: {
     flexDirection: 'row',
@@ -125,22 +133,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
     gap: spacing.sm,
   },
   breakdownIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  breakdownTextWrap: {
+    flex: 1,
   },
   breakdownLabel: {
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.caption,
+    marginBottom: 2,
   },
   breakdownAmount: {
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.bodySmall,
+    fontSize: 15,
   },
 });

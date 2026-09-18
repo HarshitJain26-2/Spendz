@@ -6,7 +6,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { TransactionItem } from '@/components/transaction/TransactionItem';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { typography } from '@/theme/typography';
-import { spacing } from '@/theme/spacing';
+import { spacing, borderRadius, shadows } from '@/theme/spacing';
 import type { Transaction } from '@/types';
 
 interface RecentTransactionsProps {
@@ -49,9 +49,19 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
           description="Add your first transaction to start tracking your spending."
         />
       ) : (
-        <View>
-          {transactions.map((transaction, index) => (
-            <View key={transaction.id}>
+        <View style={styles.list}>
+          {transactions.map((transaction) => (
+            <View
+              key={transaction.id}
+              style={[
+                styles.itemCard,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                },
+                shadows.sm,
+              ]}
+            >
               <TransactionItem
                 transaction={transaction}
                 onPress={
@@ -60,11 +70,6 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
                     : undefined
                 }
               />
-              {index < transactions.length - 1 && (
-                <View
-                  style={[styles.divider, { backgroundColor: colors.borderLight }]}
-                />
-              )}
             </View>
           ))}
         </View>
@@ -87,13 +92,18 @@ const styles = StyleSheet.create({
   viewAll: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 2,
   },
   viewAllText: {
-    fontFamily: typography.fontFamily.medium,
+    fontFamily: typography.fontFamily.semiBold,
     fontSize: typography.fontSize.bodySmall,
   },
-  divider: {
-    height: 1,
-    marginLeft: 56,
+  list: {
+    gap: spacing.sm,
+  },
+  itemCard: {
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
 });

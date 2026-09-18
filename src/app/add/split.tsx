@@ -9,9 +9,10 @@ import {
   Platform,
   Alert,
   TextInput,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Check, Plus, Users } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { AmountInput } from '@/components/ui/AmountInput';
@@ -29,10 +30,11 @@ import { getTodayISO } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
 import { calculateEqualSplit } from '@/utils/calculations';
 import { typography } from '@/theme/typography';
-import { spacing } from '@/theme/spacing';
+import { borderRadius, spacing, shadows } from '@/theme/spacing';
 
 export default function AddSplitScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const addTransaction = useTransactionStore((s) => s.addTransaction);
   const addSplitExpense = useSplitStore((s) => s.addSplitExpense);
@@ -217,13 +219,20 @@ export default function AddSplitScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
+          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backBtn}>
             <ArrowLeft size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.accent }]}>
-            Split Expense
-          </Text>
-          <View style={{ width: 24 }} />
+          <View style={styles.titleGroup}>
+            <Image
+              source={require('@/assets/images/spendz-logo.png')}
+              style={styles.logoBadge}
+              resizeMode="contain"
+            />
+            <Text style={[styles.title, { color: colors.textPrimary }]}>
+              Split Expense
+            </Text>
+          </View>
+          <Avatar name="You" size={36} />
         </View>
 
         <ScrollView
@@ -267,7 +276,7 @@ export default function AddSplitScreen() {
               style={[
                 styles.quickAddBox,
                 {
-                  backgroundColor: colors.surfaceElevated,
+                  backgroundColor: colors.surface,
                   borderColor: colors.border,
                 },
               ]}
@@ -307,7 +316,7 @@ export default function AddSplitScreen() {
               style={[
                 styles.friendChip,
                 {
-                  backgroundColor: colors.accent + '20',
+                  backgroundColor: colors.accentLight,
                   borderColor: colors.accent,
                 },
               ]}
@@ -335,8 +344,8 @@ export default function AddSplitScreen() {
                     styles.friendChip,
                     {
                       backgroundColor: isSelected
-                        ? colors.accent + '15'
-                        : colors.surfaceElevated,
+                        ? colors.accentLight
+                        : colors.surface,
                       borderColor: isSelected
                         ? colors.accent
                         : colors.border,
@@ -375,7 +384,7 @@ export default function AddSplitScreen() {
             style={[
               styles.payerContainer,
               {
-                backgroundColor: colors.surfaceElevated,
+                backgroundColor: colors.surface,
                 borderColor: colors.border,
               },
             ]}
@@ -462,12 +471,19 @@ export default function AddSplitScreen() {
               style={[
                 styles.friendPaidInfo,
                 {
-                  backgroundColor: colors.surfaceElevated,
+                  backgroundColor: colors.surface,
                   borderColor: colors.border,
                 },
               ]}
             >
-              <Users size={18} color={colors.accent} />
+              <View
+                style={[
+                  styles.friendPaidIconBox,
+                  { backgroundColor: colors.accentLight },
+                ]}
+              >
+                <Users size={16} color={colors.accent} />
+              </View>
               <Text style={[styles.friendPaidInfoText, { color: colors.textSecondary }]}>
                 {payerFriend?.name || 'Friend'} paid the full bill • No money deducted from your accounts
               </Text>
@@ -475,16 +491,23 @@ export default function AddSplitScreen() {
           )}
 
           {/* Split Mode Selector (Equal vs Custom) */}
-          <View style={styles.modeSelectorContainer}>
+          <View
+            style={[
+              styles.modeSelectorContainer,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+              },
+            ]}
+          >
             <TouchableOpacity
               onPress={() => setSplitMethod('equal')}
+              activeOpacity={0.8}
               style={[
                 styles.modeBtn,
-                {
-                  backgroundColor:
-                    splitMethod === 'equal'
-                      ? colors.accent
-                      : colors.surfaceElevated,
+                splitMethod === 'equal' && {
+                  backgroundColor: colors.accent,
+                  ...shadows.sm,
                 },
               ]}
             >
@@ -504,13 +527,12 @@ export default function AddSplitScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setSplitMethod('custom')}
+              activeOpacity={0.8}
               style={[
                 styles.modeBtn,
-                {
-                  backgroundColor:
-                    splitMethod === 'custom'
-                      ? colors.accent
-                      : colors.surfaceElevated,
+                splitMethod === 'custom' && {
+                  backgroundColor: colors.accent,
+                  ...shadows.sm,
                 },
               ]}
             >
@@ -536,7 +558,7 @@ export default function AddSplitScreen() {
               style={[
                 styles.summaryCard,
                 {
-                  backgroundColor: colors.surfaceElevated,
+                  backgroundColor: colors.surface,
                   borderColor: colors.border,
                 },
               ]}
@@ -581,7 +603,7 @@ export default function AddSplitScreen() {
               style={[
                 styles.customCard,
                 {
-                  backgroundColor: colors.surfaceElevated,
+                  backgroundColor: colors.surface,
                   borderColor: colors.border,
                 },
               ]}
@@ -696,7 +718,12 @@ export default function AddSplitScreen() {
         </ScrollView>
 
         {/* Submit */}
-        <View style={styles.bottom}>
+        <View
+          style={[
+            styles.bottom,
+            { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+          ]}
+        >
           <Button
             title="Add Split Expense"
             onPress={handleSubmit}
@@ -723,6 +750,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
+  },
+  backBtn: {
+    padding: spacing.xs,
+  },
+  titleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  logoBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
@@ -757,8 +797,9 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.xl,
     marginVertical: spacing.sm,
     padding: spacing.md,
-    borderRadius: 12,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
+    ...shadows.sm,
   },
   quickAddInput: {
     borderWidth: 1,
@@ -794,15 +835,20 @@ const styles = StyleSheet.create({
   },
   modeSelectorContainer: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.xl,
+    marginHorizontal: spacing.xl,
     marginVertical: spacing.md,
-    gap: spacing.md,
+    padding: 4,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    gap: 4,
+    ...shadows.sm,
   },
   modeBtn: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: 10,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   modeBtnText: {
     fontFamily: typography.fontFamily.medium,
@@ -811,9 +857,10 @@ const styles = StyleSheet.create({
   summaryCard: {
     marginHorizontal: spacing.xl,
     padding: spacing.lg,
-    borderRadius: 16,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     gap: spacing.sm,
+    ...shadows.sm,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -827,9 +874,10 @@ const styles = StyleSheet.create({
   customCard: {
     marginHorizontal: spacing.xl,
     padding: spacing.lg,
-    borderRadius: 16,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     gap: spacing.md,
+    ...shadows.sm,
   },
   customRow: {
     flexDirection: 'row',
@@ -868,14 +916,14 @@ const styles = StyleSheet.create({
   },
   bottom: {
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing['2xl'],
     marginTop: spacing.lg,
   },
   payerContainer: {
     marginHorizontal: spacing.xl,
-    borderRadius: 16,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     overflow: 'hidden',
+    ...shadows.sm,
   },
   payerRow: {
     flexDirection: 'row',
@@ -896,12 +944,20 @@ const styles = StyleSheet.create({
   friendPaidInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
     marginHorizontal: spacing.xl,
     padding: spacing.md,
-    borderRadius: 12,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     marginTop: spacing.sm,
+    ...shadows.sm,
+  },
+  friendPaidIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   friendPaidInfoText: {
     flex: 1,

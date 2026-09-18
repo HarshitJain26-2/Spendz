@@ -3,17 +3,18 @@ import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from 'rea
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { Plus, Settings } from 'lucide-react-native';
+import { Settings } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
+import { useBottomTabInset } from '@/hooks/useBottomTabInset';
 import { BalanceCard } from '@/components/home/BalanceCard';
 import { MonthSummaryCard } from '@/components/home/MonthSummary';
 import { RecentTransactions } from '@/components/home/RecentTransactions';
-import { FAB } from '@/components/ui/FAB';
+import { Avatar } from '@/components/ui/Avatar';
 import { useAppStore } from '@/store/appStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useTransactionStore } from '@/store/transactionStore';
 import { useSplitStore } from '@/store/splitStore';
-import { isCashAccount, isOnlineAccount } from '@/constants/accountTypes';
+import { isCashAccount } from '@/constants/accountTypes';
 import { getCurrentMonthRange } from '@/utils/date';
 import { getUserPersonalExpense } from '@/utils/calculations';
 import { typography } from '@/theme/typography';
@@ -22,6 +23,8 @@ import { spacing } from '@/theme/spacing';
 export default function HomeScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const bottomTabInset = useBottomTabInset(spacing.lg);
+
   const userProfile = useAppStore((s) => s.userProfile);
   const accounts = useAccountStore((s) => s.accounts);
   const transactions = useTransactionStore((s) => s.transactions);
@@ -80,38 +83,50 @@ export default function HomeScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={['top']}
+      edges={['top', 'left', 'right']}
     >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Brand Header */}
-        <Animated.View
-          entering={FadeIn.delay(50).duration(500)}
-          style={styles.headerRow}
-        >
-          <View style={styles.brandContainer}>
-            <Image
-              source={require('@/assets/images/spendz-logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
+      {/* Brand Header */}
+      <View style={styles.header}>
+        <View style={styles.logoGroup}>
+          <Image
+            source={require('@/assets/images/spendz-logo.png')}
+            style={styles.logoBadge}
+            resizeMode="contain"
+          />
+          <View>
             <Text style={[styles.brandName, { color: colors.textPrimary }]}>
               Spendz
             </Text>
+            <Text style={[styles.brandSubtitle, { color: colors.textTertiary }]}>
+              Overview
+            </Text>
           </View>
+        </View>
+
+        <View style={styles.headerRight}>
           <TouchableOpacity
             onPress={() => router.push('/(tabs)/settings')}
-            style={[styles.settingsBtn, { backgroundColor: colors.surfaceElevated }]}
+            style={[
+              styles.iconButton,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
             activeOpacity={0.7}
           >
-            <Settings size={18} color={colors.textSecondary} />
+            <Settings size={18} color={colors.textPrimary} />
           </TouchableOpacity>
-        </Animated.View>
+          <Avatar name={userProfile.name || 'You'} size={36} />
+        </View>
+      </View>
 
-        {/* Greeting */}
-        <Animated.View entering={FadeIn.delay(100).duration(500)}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: bottomTabInset },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Greeting / Page Title */}
+        <Animated.View entering={FadeIn.delay(50).duration(400)}>
           <Text style={[styles.greeting, { color: colors.textPrimary }]}>
             {greeting}
           </Text>
@@ -134,18 +149,9 @@ export default function HomeScreen() {
         <RecentTransactions
           transactions={recentTransactions}
           onViewAll={() => router.push('/(tabs)/activity')}
-          onTransactionPress={(t) =>
-            router.push(`/transaction/${t.id}`)
-          }
+          onTransactionPress={(t) => router.push(`/transaction/${t.id}`)}
         />
       </ScrollView>
-
-      {/* Floating Add Button */}
-      <FAB
-        icon={<Plus size={28} color="#FFFFFF" strokeWidth={2.5} />}
-        onPress={() => router.push('/add')}
-        style={styles.fab}
-      />
     </SafeAreaView>
   );
 }
@@ -154,47 +160,56 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scroll: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: 80,
-  },
-  headerRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
   },
-  brandContainer: {
+  logoGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
-  logo: {
+  logoBadge: {
     width: 32,
     height: 32,
-    borderRadius: 8,
+    borderRadius: 9,
   },
   brandName: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h3,
-    letterSpacing: -0.5,
+    fontSize: 16,
+    lineHeight: 20,
   },
-  settingsBtn: {
+  brandSubtitle: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  iconButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+  },
+  scroll: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
   },
   greeting: {
-    fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.h2,
-    marginBottom: spacing.lg,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: spacing.xl,
-    right: spacing.xl,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 26,
+    letterSpacing: -0.5,
+    marginBottom: spacing.md,
+    marginTop: spacing.xs,
   },
 });

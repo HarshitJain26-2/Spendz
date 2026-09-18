@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, CheckCircle2, HandCoins } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useFriendStore } from '@/store/friendStore';
 import { useSplitStore } from '@/store/splitStore';
@@ -17,10 +17,11 @@ import { useAccountStore } from '@/store/accountStore';
 import { useTransactionStore } from '@/store/transactionStore';
 import { AccountPicker } from '@/components/transaction/AccountPicker';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { formatCurrency } from '@/utils/currency';
 import { getTodayISO } from '@/utils/date';
 import { typography } from '@/theme/typography';
-import { spacing } from '@/theme/spacing';
+import { spacing, borderRadius, shadows } from '@/theme/spacing';
 
 export default function SettleScreen() {
   const { friendId } = useLocalSearchParams<{ friendId: string }>();
@@ -139,7 +140,7 @@ export default function SettleScreen() {
         // User is paying friend back: directly deduct from account WITHOUT creating an expense transaction
         useAccountStore.getState().updateBalance(accountId, -absNet);
       } else {
-        // Friend paid user back: record incoming settlement
+        // Friend is paying user: record incoming income transaction to reflect received funds
         addTransaction({
           type: 'income',
           amount: absNet,
@@ -161,38 +162,35 @@ export default function SettleScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          <ArrowLeft size={24} color={colors.textPrimary} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          style={styles.backButton}
+        >
+          <ArrowLeft size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.textPrimary }]}>
           Settle Up
         </Text>
-        <View style={{ width: 24 }} />
+        <View style={{ width: 36 }} />
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Amount Card */}
-        <View
-          style={[
-            styles.amountCard,
-            {
-              backgroundColor: colors.surfaceElevated,
-              borderColor: colors.border,
-            },
-          ]}
-        >
+        {/* Hero Amount Card */}
+        <Card style={styles.amountCard} padding="xl">
           <Text style={[styles.amountLabel, { color: colors.textSecondary }]}>
             {isUserOwing
               ? `You owe ${friend.name}`
               : totalUnsettledCount > 0
-                ? `${friend.name} owes you`
-                : 'All settled up'}
+              ? `${friend.name} owes you`
+              : 'All settled up'}
           </Text>
           <Text
             style={[
@@ -206,12 +204,12 @@ export default function SettleScreen() {
             {totalUnsettledCount} unsettled shared{' '}
             {totalUnsettledCount === 1 ? 'expense' : 'expenses'}
           </Text>
-        </View>
+        </Card>
 
         {/* Account selector */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            {isUserOwing ? 'Pay From Account' : 'Deposit To Account'}
+            {isUserOwing ? 'PAY FROM ACCOUNT' : 'DEPOSIT TO ACCOUNT'}
           </Text>
         </View>
         <AccountPicker
@@ -226,9 +224,10 @@ export default function SettleScreen() {
           style={[
             styles.toggleRow,
             {
-              backgroundColor: colors.surfaceElevated,
+              backgroundColor: colors.surface,
               borderColor: colors.border,
             },
+            shadows.sm,
           ]}
           activeOpacity={0.7}
         >
@@ -254,7 +253,7 @@ export default function SettleScreen() {
       </ScrollView>
 
       {/* Settle CTA */}
-      <View style={styles.bottom}>
+      <View style={[styles.bottom, { backgroundColor: colors.background }]}>
         <Button
           title={`Confirm Settlement (${formatCurrency(absNet)})`}
           onPress={handleSettle}
@@ -276,22 +275,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  backButton: {
+    padding: spacing.xs,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h3,
+    fontSize: 20,
   },
   scrollContent: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xs,
     paddingBottom: 40,
     gap: spacing.lg,
   },
   amountCard: {
     alignItems: 'center',
-    padding: spacing.xl,
-    borderRadius: 20,
-    borderWidth: 1,
     gap: spacing.xs,
   },
   amountLabel: {
@@ -312,17 +313,16 @@ const styles = StyleSheet.create({
     marginBottom: -spacing.sm,
   },
   sectionTitle: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.caption,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: 0.8,
   },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: spacing.md,
-    borderRadius: 14,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
   },
   toggleTextWrap: {
@@ -330,17 +330,19 @@ const styles = StyleSheet.create({
     marginRight: spacing.md,
   },
   toggleTitle: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.body,
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 14,
     marginBottom: 2,
   },
   toggleDesc: {
     fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.caption,
+    fontSize: 12,
+    lineHeight: 16,
   },
   bottom: {
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing['2xl'],
+    paddingTop: spacing.sm,
   },
   notFound: {
     flex: 1,

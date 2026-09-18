@@ -21,20 +21,20 @@ import { useTheme } from '@/hooks/useTheme';
 import { useTransactionStore } from '@/store/transactionStore';
 import { useCategoryStore } from '@/store/categoryStore';
 import { useSplitStore } from '@/store/splitStore';
+import { Card } from '@/components/ui/Card';
 import { CategoryChart } from '@/components/charts/CategoryChart';
 import { ComparisonBar } from '@/components/charts/ComparisonBar';
 import { formatCurrency } from '@/utils/currency';
 import { formatMonth } from '@/utils/date';
 import { getUserPersonalExpense } from '@/utils/calculations';
 import { typography } from '@/theme/typography';
-import { spacing, borderRadius } from '@/theme/spacing';
+import { spacing, borderRadius, shadows } from '@/theme/spacing';
 import type { CategoryBreakdown } from '@/types';
 
 export default function InsightsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const transactions = useTransactionStore((s) => s.transactions);
-  const categories = useCategoryStore((s) => s.categories);
   const getCategoryById = useCategoryStore((s) => s.getCategoryById);
   const splitExpenses = useSplitStore((s) => s.splitExpenses);
 
@@ -50,7 +50,7 @@ export default function InsightsScreen() {
   };
 
   // Month date range
-  const { monthTransactions, income, expense, saved, categoryBreakdown } = useMemo(() => {
+  const { income, expense, saved, categoryBreakdown } = useMemo(() => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const start = new Date(year, month, 1);
@@ -107,120 +107,100 @@ export default function InsightsScreen() {
       .sort((a, b) => b.amount - a.amount);
 
     return {
-      monthTransactions: mTransactions,
       income: inc,
       expense: exp,
       saved: inc - exp,
       categoryBreakdown: breakdown,
     };
-  }, [transactions, currentDate, getCategoryById]);
+  }, [transactions, currentDate, getCategoryById, splitExpenses]);
 
   const savingsRate = income > 0 ? Math.round((saved / income) * 100) : 0;
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          <ArrowLeft size={24} color={colors.textPrimary} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          style={styles.backButton}
+        >
+          <ArrowLeft size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.textPrimary }]}>
           Insights
         </Text>
-        <View style={{ width: 24 }} />
+        <View style={{ width: 36 }} />
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Month Picker Row */}
-        <View
-          style={[
-            styles.monthSelector,
-            {
-              backgroundColor: colors.surfaceElevated,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <TouchableOpacity onPress={handlePrevMonth} style={styles.chevronBtn}>
-            <ChevronLeft size={20} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.monthText, { color: colors.textPrimary }]}>
-            {formatMonth(currentDate)}
-          </Text>
-          <TouchableOpacity onPress={handleNextMonth} style={styles.chevronBtn}>
-            <ChevronRight size={20} color={colors.textPrimary} />
-          </TouchableOpacity>
-        </View>
+        {/* Month Selector Card */}
+        <Card padding="none" style={styles.monthSelectorCard}>
+          <View style={styles.monthSelectorRow}>
+            <TouchableOpacity onPress={handlePrevMonth} style={styles.chevronBtn}>
+              <ChevronLeft size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <Text style={[styles.monthText, { color: colors.textPrimary }]}>
+              {formatMonth(currentDate)}
+            </Text>
+            <TouchableOpacity onPress={handleNextMonth} style={styles.chevronBtn}>
+              <ChevronRight size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+        </Card>
 
         {/* 3 Metric Cards */}
         <View style={styles.metricGrid}>
           {/* Income */}
-          <View
-            style={[
-              styles.metricCard,
-              {
-                backgroundColor: colors.surfaceElevated,
-                borderColor: colors.border,
-              },
-            ]}
-          >
+          <Card style={styles.metricCard} padding="md">
             <View style={styles.metricLabelRow}>
-              <TrendingUp size={16} color={colors.income} />
+              <View style={[styles.iconWrap, { backgroundColor: colors.incomeLight }]}>
+                <TrendingUp size={14} color={colors.income} strokeWidth={2.4} />
+              </View>
               <Text
                 style={[styles.metricLabel, { color: colors.textSecondary }]}
               >
-                Income
+                INCOME
               </Text>
             </View>
             <Text style={[styles.metricValue, { color: colors.income }]}>
               {formatCurrency(income)}
             </Text>
-          </View>
+          </Card>
 
           {/* Spent */}
-          <View
-            style={[
-              styles.metricCard,
-              {
-                backgroundColor: colors.surfaceElevated,
-                borderColor: colors.border,
-              },
-            ]}
-          >
+          <Card style={styles.metricCard} padding="md">
             <View style={styles.metricLabelRow}>
-              <TrendingDown size={16} color={colors.expense} />
+              <View style={[styles.iconWrap, { backgroundColor: colors.expenseLight }]}>
+                <TrendingDown size={14} color={colors.expense} strokeWidth={2.4} />
+              </View>
               <Text
                 style={[styles.metricLabel, { color: colors.textSecondary }]}
               >
-                Spent
+                SPENT
               </Text>
             </View>
             <Text style={[styles.metricValue, { color: colors.expense }]}>
               {formatCurrency(expense)}
             </Text>
-          </View>
+          </Card>
 
           {/* Saved */}
-          <View
-            style={[
-              styles.metricCard,
-              {
-                backgroundColor: colors.surfaceElevated,
-                borderColor: colors.border,
-              },
-            ]}
-          >
+          <Card style={styles.metricCard} padding="md">
             <View style={styles.metricLabelRow}>
-              <PiggyBank size={16} color={colors.accent} />
+              <View style={[styles.iconWrap, { backgroundColor: colors.accentLight }]}>
+                <PiggyBank size={14} color={colors.accent} strokeWidth={2.4} />
+              </View>
               <Text
                 style={[styles.metricLabel, { color: colors.textSecondary }]}
               >
-                Saved
+                SAVED
               </Text>
             </View>
             <Text
@@ -231,27 +211,29 @@ export default function InsightsScreen() {
             >
               {formatCurrency(saved)}
             </Text>
-          </View>
+          </Card>
         </View>
 
         {/* Smart Insight Banner */}
         {income > 0 && (
-          <View
-            style={[
-              styles.insightBanner,
-              {
-                backgroundColor: colors.accent + '15',
-                borderColor: colors.accent + '30',
-              },
-            ]}
+          <Card
+            style={styles.insightBanner}
+            padding="md"
           >
-            <Sparkles size={20} color={colors.accent} />
+            <View
+              style={[
+                styles.iconWrap,
+                { backgroundColor: colors.accentLight },
+              ]}
+            >
+              <Sparkles size={16} color={colors.accent} strokeWidth={2.2} />
+            </View>
             <Text style={[styles.insightText, { color: colors.textPrimary }]}>
               {savingsRate > 0
                 ? `You saved ${savingsRate}% of your total income this month. Great financial health!`
                 : `You spent more than your income this month. Keep an eye on non-essential expenses.`}
             </Text>
-          </View>
+          </Card>
         )}
 
         {/* Ratio Bar */}
@@ -276,25 +258,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  backButton: {
+    padding: spacing.xs,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h3,
+    fontSize: 20,
   },
   scrollContent: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xs,
     paddingBottom: 40,
-    gap: spacing.lg,
+    gap: spacing.md,
   },
-  monthSelector: {
+  monthSelectorCard: {
+    borderRadius: borderRadius.xl,
+  },
+  monthSelectorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
   },
   chevronBtn: {
     padding: 6,
@@ -309,31 +297,32 @@ const styles = StyleSheet.create({
   },
   metricCard: {
     flex: 1,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
     gap: spacing.xs,
   },
   metricLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
+  },
+  iconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   metricLabel: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.tiny,
-    textTransform: 'uppercase',
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 10,
+    letterSpacing: 0.5,
   },
   metricValue: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.small,
+    fontSize: 14,
   },
   insightBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
     gap: spacing.sm,
   },
   insightText: {

@@ -5,17 +5,14 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   Trash2,
-  CheckCircle2,
-  Clock,
-  ChevronRight,
   HandCoins,
+  ChevronRight,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useFriendStore } from '@/store/friendStore';
@@ -23,10 +20,11 @@ import { useSplitStore } from '@/store/splitStore';
 import { useTransactionStore } from '@/store/transactionStore';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { formatCurrency } from '@/utils/currency';
 import { formatRelativeDate } from '@/utils/date';
 import { typography } from '@/theme/typography';
-import { spacing, borderRadius } from '@/theme/spacing';
+import { spacing, borderRadius, shadows } from '@/theme/spacing';
 import { showAlert } from '@/utils/alert';
 
 export default function FriendDetailScreen() {
@@ -93,20 +91,45 @@ export default function FriendDetailScreen() {
     );
   };
 
+  const isOwed = balance > 0;
+  const isOwe = balance < 0;
+  const badgeBg = isOwed
+    ? colors.incomeLight
+    : isOwe
+    ? colors.expenseLight
+    : colors.pastelNeutral;
+  const badgeText = isOwed
+    ? colors.income
+    : isOwe
+    ? colors.expense
+    : colors.pastelNeutralText;
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          <ArrowLeft size={24} color={colors.textPrimary} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          style={styles.backButton}
+        >
+          <ArrowLeft size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
           Friend Details
         </Text>
-        <TouchableOpacity onPress={handleDelete} activeOpacity={0.7}>
-          <Trash2 size={20} color={colors.expense} />
+        <TouchableOpacity
+          onPress={handleDelete}
+          activeOpacity={0.7}
+          style={[
+            styles.iconBtn,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <Trash2 size={18} color={colors.expense} />
         </TouchableOpacity>
       </View>
 
@@ -115,15 +138,7 @@ export default function FriendDetailScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         {/* Profile Card */}
-        <View
-          style={[
-            styles.profileCard,
-            {
-              backgroundColor: colors.surfaceElevated,
-              borderColor: colors.border,
-            },
-          ]}
-        >
+        <Card style={styles.profileCard} padding="lg">
           <Avatar name={friend.name} size={64} />
           <Text style={[styles.friendName, { color: colors.textPrimary }]}>
             {friend.name}
@@ -137,72 +152,59 @@ export default function FriendDetailScreen() {
           {/* Balance Status */}
           <View style={styles.balanceWrap}>
             <Text style={[styles.balanceCaption, { color: colors.textSecondary }]}>
-              {balance > 0
+              {isOwed
                 ? `${friend.name} owes you`
-                : balance < 0
-                  ? `You owe ${friend.name}`
-                  : 'All settled up'}
+                : isOwe
+                ? `You owe ${friend.name}`
+                : 'All settled up'}
             </Text>
-            <Text
-              style={[
-                styles.balanceAmount,
-                {
-                  color:
-                    balance > 0
-                      ? colors.income
-                      : balance < 0
-                        ? colors.expense
-                        : colors.textSecondary,
-                },
-              ]}
-            >
-              {balance !== 0 ? formatCurrency(Math.abs(balance)) : '₹0'}
-            </Text>
+            <View style={[styles.balancePill, { backgroundColor: badgeBg }]}>
+              <Text style={[styles.balanceAmount, { color: badgeText }]}>
+                {balance !== 0
+                  ? (isOwed ? '+' : '-') + formatCurrency(Math.abs(balance))
+                  : '₹0'}
+              </Text>
+            </View>
           </View>
 
           {balance !== 0 && (
-            <Button
-              title="Settle Up"
-              icon={<HandCoins size={18} color="#FFFFFF" />}
-              onPress={() =>
-                router.push({
-                  pathname: '/friends/settle' as any,
-                  params: { friendId: friend.id },
-                })
-              }
-              size="md"
-              fullWidth
-            />
+            <View style={styles.settleBtnWrap}>
+              <Button
+                title="Settle Up"
+                icon={<HandCoins size={18} color="#000000" />}
+                onPress={() =>
+                  router.push({
+                    pathname: '/friends/settle' as any,
+                    params: { friendId: friend.id },
+                  })
+                }
+                size="lg"
+                fullWidth
+              />
+            </View>
           )}
-        </View>
+        </Card>
 
         {/* Split History Section */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            Shared Expenses ({splits.length})
+            SHARED EXPENSES ({splits.length})
           </Text>
         </View>
 
         {splits.length === 0 ? (
-          <View
-            style={[
-              styles.emptyCard,
-              {
-                backgroundColor: colors.surfaceElevated,
-                borderColor: colors.border,
-              },
-            ]}
-          >
+          <Card style={styles.emptyCard} padding="lg">
             <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>
               No shared expenses with {friend.name} yet.
             </Text>
-          </View>
+          </Card>
         ) : (
           splits.map((split) => {
             const transaction = transactions.find(
               (t) => t.id === split.transactionId
             );
-            const isFriendPaid = split.paidByType === 'friend' && split.paidByFriendId === friend.id;
+            const isFriendPaid =
+              split.paidByType === 'friend' && split.paidByFriendId === friend.id;
             const friendParticipant = split.participants?.find(
               (p) => p.friendId === friend.id
             );
@@ -210,14 +212,23 @@ export default function FriendDetailScreen() {
               (p) => p.friendId === null
             );
 
-            // If friend paid, the relevant debt is what user owes friend (myParticipant).
-            // If user paid, the relevant debt is what friend owes user (friendParticipant).
             const relevantAmount = isFriendPaid
-              ? (myParticipant?.amount || 0)
-              : (friendParticipant?.amount || 0);
+              ? myParticipant?.amount || 0
+              : friendParticipant?.amount || 0;
             const isSettled = isFriendPaid
               ? Boolean(myParticipant?.isPaid)
               : Boolean(friendParticipant?.isPaid);
+
+            const itemPillBg = isSettled
+              ? colors.pastelNeutral
+              : isFriendPaid
+              ? colors.expenseLight
+              : colors.incomeLight;
+            const itemPillText = isSettled
+              ? colors.pastelNeutralText
+              : isFriendPaid
+              ? colors.expense
+              : colors.income;
 
             return (
               <TouchableOpacity
@@ -231,56 +242,40 @@ export default function FriendDetailScreen() {
                 style={[
                   styles.splitItem,
                   {
-                    backgroundColor: colors.surfaceElevated,
+                    backgroundColor: colors.surface,
                     borderColor: colors.border,
                   },
+                  shadows.sm,
                 ]}
               >
                 <View style={styles.splitItemLeft}>
                   <Text
-                    style={[styles.splitItemTitle, { color: colors.textPrimary }]}
+                    style={[styles.splitTitle, { color: colors.textPrimary }]}
                     numberOfLines={1}
                   >
-                    {transaction?.note || 'Shared Expense'}
+                    {transaction?.note || 'Split Expense'}
                   </Text>
                   <Text
                     style={[
-                      styles.splitItemDate,
+                      styles.splitDate,
                       { color: colors.textTertiary },
                     ]}
                   >
-                    {isFriendPaid ? `${friend.name} paid` : 'You paid'}
-                    {transaction ? ` • ${formatRelativeDate(transaction.date)}` : ''}
+                    {transaction ? formatRelativeDate(transaction.date) : ''}
+                    {isFriendPaid ? ` · Paid by ${friend.name}` : ' · Paid by You'}
                   </Text>
                 </View>
 
                 <View style={styles.splitItemRight}>
-                  <Text
-                    style={[
-                      styles.splitItemAmount,
-                      { color: colors.textPrimary },
-                    ]}
-                  >
-                    {formatCurrency(relevantAmount)}
-                  </Text>
-                  {isSettled ? (
-                    <View style={styles.badgeRow}>
-                      <CheckCircle2 size={12} color={colors.income} />
-                      <Text style={{ color: colors.income, fontSize: 12 }}>
-                        Settled
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.badgeRow}>
-                      <Clock size={12} color={colors.expense} />
-                      <Text style={{ color: colors.expense, fontSize: 12 }}>
-                        {isFriendPaid ? 'You owe' : 'Unsettled'}
-                      </Text>
-                    </View>
-                  )}
+                  <View style={[styles.pillBadge, { backgroundColor: itemPillBg }]}>
+                    <Text style={[styles.pillText, { color: itemPillText }]}>
+                      {isSettled
+                        ? 'Settled'
+                        : (isFriendPaid ? '-' : '+') + formatCurrency(relevantAmount)}
+                    </Text>
+                  </View>
+                  <ChevronRight size={16} color={colors.textTertiary} />
                 </View>
-
-                <ChevronRight size={16} color={colors.textTertiary} />
               </TouchableOpacity>
             );
           })
@@ -299,95 +294,112 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  backButton: {
+    padding: spacing.xs,
   },
   headerTitle: {
-    fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.h3,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 18,
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
   },
   scrollContent: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xs,
     paddingBottom: 40,
   },
   profileCard: {
     alignItems: 'center',
-    padding: spacing.xl,
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: spacing.sm,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   friendName: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h3,
-    marginTop: spacing.xs,
+    fontSize: 20,
+    marginTop: spacing.sm,
   },
   friendPhone: {
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.caption,
+    marginTop: 2,
   },
   balanceWrap: {
     alignItems: 'center',
-    marginVertical: spacing.md,
-    gap: 4,
+    marginTop: spacing.md,
+    gap: spacing.xs,
   },
   balanceCaption: {
     fontFamily: typography.fontFamily.medium,
     fontSize: typography.fontSize.caption,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  },
+  balancePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: borderRadius.full,
   },
   balanceAmount: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.hero,
+    fontSize: 18,
+  },
+  settleBtnWrap: {
+    width: '100%',
+    marginTop: spacing.lg,
   },
   sectionHeader: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   sectionTitle: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.caption,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  emptyCard: {
-    padding: spacing.xl,
-    borderRadius: 16,
-    borderWidth: 1,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 11,
+    letterSpacing: 0.8,
   },
   splitItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     padding: spacing.md,
-    borderRadius: 14,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     marginBottom: spacing.sm,
-    gap: spacing.md,
   },
   splitItemLeft: {
     flex: 1,
+    marginRight: spacing.sm,
   },
-  splitItemTitle: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.body,
+  splitTitle: {
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 15,
     marginBottom: 2,
   },
-  splitItemDate: {
+  splitDate: {
     fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.caption,
+    fontSize: 12,
   },
   splitItemRight: {
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  splitItemAmount: {
-    fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.body,
-  },
-  badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: spacing.xs,
+  },
+  pillBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+  },
+  pillText: {
+    fontSize: 12,
+    fontFamily: typography.fontFamily.semiBold,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   notFound: {
     flex: 1,

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,8 +12,9 @@ import { ArrowLeft, Plus, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useCategoryStore } from '@/store/categoryStore';
 import { DynamicIcon } from '@/components/ui/DynamicIcon';
+import { Card } from '@/components/ui/Card';
 import { typography } from '@/theme/typography';
-import { spacing, borderRadius } from '@/theme/spacing';
+import { spacing, borderRadius, shadows } from '@/theme/spacing';
 import { showAlert } from '@/utils/alert';
 import type { CategoryType } from '@/types';
 
@@ -46,11 +46,16 @@ export default function CategoriesManagementScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          <ArrowLeft size={24} color={colors.textPrimary} />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          style={styles.backButton}
+        >
+          <ArrowLeft size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.textPrimary }]}>
           Categories
@@ -60,12 +65,12 @@ export default function CategoriesManagementScreen() {
           style={[styles.addBtn, { backgroundColor: colors.accent }]}
           activeOpacity={0.8}
         >
-          <Plus size={18} color="#FFFFFF" strokeWidth={2.5} />
+          <Plus size={18} color="#000000" strokeWidth={2.4} />
           <Text style={styles.addBtnText}>Add</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Segmented Tab */}
+      {/* Segmented Filter Pills */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
           onPress={() => setActiveTab('expense')}
@@ -74,8 +79,10 @@ export default function CategoriesManagementScreen() {
             {
               backgroundColor:
                 activeTab === 'expense'
-                  ? colors.accent
-                  : colors.surfaceElevated,
+                  ? colors.textPrimary
+                  : colors.surface,
+              borderColor:
+                activeTab === 'expense' ? colors.textPrimary : colors.border,
             },
           ]}
           activeOpacity={0.7}
@@ -86,12 +93,16 @@ export default function CategoriesManagementScreen() {
               {
                 color:
                   activeTab === 'expense'
-                    ? '#FFFFFF'
+                    ? colors.surface
                     : colors.textSecondary,
+                fontFamily:
+                  activeTab === 'expense'
+                    ? typography.fontFamily.semiBold
+                    : typography.fontFamily.medium,
               },
             ]}
           >
-            Expense
+            Expenses
           </Text>
         </TouchableOpacity>
 
@@ -102,8 +113,10 @@ export default function CategoriesManagementScreen() {
             {
               backgroundColor:
                 activeTab === 'income'
-                  ? colors.accent
-                  : colors.surfaceElevated,
+                  ? colors.textPrimary
+                  : colors.surface,
+              borderColor:
+                activeTab === 'income' ? colors.textPrimary : colors.border,
             },
           ]}
           activeOpacity={0.7}
@@ -114,8 +127,12 @@ export default function CategoriesManagementScreen() {
               {
                 color:
                   activeTab === 'income'
-                    ? '#FFFFFF'
+                    ? colors.surface
                     : colors.textSecondary,
+                fontFamily:
+                  activeTab === 'income'
+                    ? typography.fontFamily.semiBold
+                    : typography.fontFamily.medium,
               },
             ]}
           >
@@ -128,52 +145,45 @@ export default function CategoriesManagementScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <View style={styles.list}>
-          {filteredCategories.map((cat) => (
-            <View
-              key={cat.id}
-              style={[
-                styles.categoryCard,
-                {
-                  backgroundColor: colors.surfaceElevated,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.iconBox,
-                  { backgroundColor: `${cat.color}20` },
-                ]}
-              >
-                <DynamicIcon name={cat.icon} size={20} color={cat.color} />
-              </View>
+        <Card padding="none" style={styles.groupedCard}>
+          {filteredCategories.map((cat, index) => (
+            <View key={cat.id}>
+              <View style={styles.categoryRow}>
+                <View
+                  style={[
+                    styles.iconBox,
+                    { backgroundColor: `${cat.color}15` },
+                  ]}
+                >
+                  <DynamicIcon name={cat.icon} size={20} color={cat.color} />
+                </View>
 
-              <View style={styles.categoryInfo}>
                 <Text
                   style={[styles.categoryName, { color: colors.textPrimary }]}
+                  numberOfLines={1}
                 >
                   {cat.name}
                 </Text>
-                <Text
-                  style={[styles.categoryType, { color: colors.textTertiary }]}
-                >
-                  {cat.isDefault ? 'Default' : 'Custom Category'}
-                </Text>
+
+                {!cat.isDefault && (
+                  <TouchableOpacity
+                    onPress={() => handleDelete(cat.id, cat.name)}
+                    style={styles.deleteBtn}
+                    activeOpacity={0.7}
+                  >
+                    <Trash2 size={18} color={colors.expense} />
+                  </TouchableOpacity>
+                )}
               </View>
 
-              {!cat.isDefault && (
-                <TouchableOpacity
-                  onPress={() => handleDelete(cat.id, cat.name)}
-                  style={styles.deleteBtn}
-                  activeOpacity={0.7}
-                >
-                  <Trash2 size={18} color={colors.expense} />
-                </TouchableOpacity>
+              {index < filteredCategories.length - 1 && (
+                <View
+                  style={[styles.divider, { backgroundColor: colors.border }]}
+                />
               )}
             </View>
           ))}
-        </View>
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );
@@ -188,77 +198,77 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  backButton: {
+    padding: spacing.xs,
   },
   title: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.fontSize.h3,
+    fontSize: 20,
   },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: borderRadius.full,
     gap: 4,
   },
   addBtnText: {
-    color: '#FFFFFF',
+    color: '#000000',
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.small,
+    fontSize: 12,
   },
   tabContainer: {
     flexDirection: 'row',
     paddingHorizontal: spacing.xl,
     gap: spacing.sm,
-    marginVertical: spacing.sm,
+    marginVertical: spacing.xs,
   },
   tabBtn: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
+    paddingVertical: 8,
+    borderRadius: borderRadius.full,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
   },
   tabText: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.bodySmall,
+    fontSize: 13,
   },
   scrollContent: {
     paddingHorizontal: spacing.xl,
-    paddingBottom: 40,
     paddingTop: spacing.sm,
+    paddingBottom: 40,
   },
-  list: {
-    gap: spacing.sm,
+  groupedCard: {
+    borderRadius: borderRadius.xl,
   },
-  categoryCard: {
+  categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.md,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
     gap: spacing.md,
   },
   iconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: borderRadius.md,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  categoryInfo: {
-    flex: 1,
-    gap: 2,
-  },
   categoryName: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.body,
-  },
-  categoryType: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.fontSize.tiny,
+    flex: 1,
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 15,
   },
   deleteBtn: {
-    padding: 6,
+    padding: spacing.xs,
+  },
+  divider: {
+    height: 1,
+    marginLeft: 68,
   },
 });
