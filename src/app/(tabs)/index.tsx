@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
-    paddingBottom: spacing['6xl'],
+    paddingBottom: 80,
   },
   headerRow: {
     flexDirection: 'row',

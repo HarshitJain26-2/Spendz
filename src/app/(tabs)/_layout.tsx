@@ -1,12 +1,11 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { StyleSheet, View, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Home,
   Activity,
   Users,
   Settings,
-  Plus,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { typography } from '@/theme/typography';
@@ -14,6 +13,16 @@ import { spacing } from '@/theme/spacing';
 
 export default function TabLayout() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  // Base height of the tab bar content (icon + label + spacing) excluding safe-area bottom inset
+  const TAB_BAR_BASE_HEIGHT = 60;
+  const bottomInset = Math.max(insets?.bottom ?? 0, 0);
+
+  // When Android (3-button / gesture nav) or iOS (home indicator) has a bottom inset,
+  // expand the tab bar height and apply bottom padding so all tab content sits cleanly above it.
+  const tabHeight = TAB_BAR_BASE_HEIGHT + bottomInset;
+  const paddingBottom = bottomInset > 0 ? bottomInset : spacing.sm;
 
   return (
     <Tabs
@@ -25,9 +34,9 @@ export default function TabLayout() {
           backgroundColor: colors.tabBar,
           borderTopColor: colors.tabBarBorder,
           borderTopWidth: 1,
-          paddingTop: spacing.sm,
-          paddingBottom: Platform.OS === 'ios' ? spacing['2xl'] : spacing.md,
-          height: Platform.OS === 'ios' ? 88 : 64,
+          paddingTop: spacing.xs,
+          paddingBottom,
+          height: tabHeight,
         },
         tabBarLabelStyle: {
           fontFamily: typography.fontFamily.medium,

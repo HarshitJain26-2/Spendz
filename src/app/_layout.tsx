@@ -10,6 +10,7 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { initializeDatabase } from '@/database';
 import { useAppStore } from '@/store/appStore';
 import { useAccountStore } from '@/store/accountStore';
@@ -79,65 +80,69 @@ export default function RootLayout() {
   // Error State UI with Retry
   if (initStatus === 'error') {
     return (
-      <View
-        style={[
-          styles.centerContainer,
-          { backgroundColor: themeColors.background },
-        ]}
-      >
-        <Text style={[styles.errorTitle, { color: themeColors.expense }]}>
-          Spendz
-        </Text>
-        <Text style={[styles.errorSubtitle, { color: themeColors.textPrimary }]}>
-          Something went wrong while loading your data.
-        </Text>
-        {initError && (
-          <Text style={[styles.errorDetails, { color: themeColors.textSecondary }]}>
-            {initError}
-          </Text>
-        )}
-        <TouchableOpacity
-          onPress={prepare}
-          style={[styles.retryButton, { backgroundColor: themeColors.accent }]}
-          activeOpacity={0.8}
+      <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
+        <View
+          style={[
+            styles.centerContainer,
+            { backgroundColor: themeColors.background },
+          ]}
         >
-          <Text style={styles.retryButtonText}>Try Again</Text>
-        </TouchableOpacity>
-      </View>
+          <Text style={[styles.errorTitle, { color: themeColors.expense }]}>
+            Spendz
+          </Text>
+          <Text style={[styles.errorSubtitle, { color: themeColors.textPrimary }]}>
+            Something went wrong while loading your data.
+          </Text>
+          {initError && (
+            <Text style={[styles.errorDetails, { color: themeColors.textSecondary }]}>
+              {initError}
+            </Text>
+          )}
+          <TouchableOpacity
+            onPress={prepare}
+            style={[styles.retryButton, { backgroundColor: themeColors.accent }]}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaProvider>
     );
   }
 
   // Initializing / Loading State UI
   if (!fontsLoaded || !isDbReady || initStatus !== 'ready') {
     return (
-      <View
-        style={[
-          styles.centerContainer,
-          { backgroundColor: themeColors.background },
-        ]}
-      >
-        <Image
-          source={require('@/assets/images/spendz-logo.png')}
-          style={styles.loadingLogo}
-          resizeMode="contain"
-        />
-        <Text style={[styles.brandTitle, { color: themeColors.textPrimary }]}>
-          Spendz
-        </Text>
-        <Text style={[styles.brandSubtitle, { color: themeColors.textSecondary }]}>
-          Preparing your data...
-        </Text>
-        <ActivityIndicator
-          size="small"
-          color={themeColors.accent}
-          style={styles.spinner}
-        />
-      </View>
+      <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
+        <View
+          style={[
+            styles.centerContainer,
+            { backgroundColor: themeColors.background },
+          ]}
+        >
+          <Image
+            source={require('@/assets/images/spendz-logo.png')}
+            style={styles.loadingLogo}
+            resizeMode="contain"
+          />
+          <Text style={[styles.brandTitle, { color: themeColors.textPrimary }]}>
+            Spendz
+          </Text>
+          <Text style={[styles.brandSubtitle, { color: themeColors.textSecondary }]}>
+            Preparing your data...
+          </Text>
+          <ActivityIndicator
+            size="small"
+            color={themeColors.accent}
+            style={styles.spinner}
+          />
+        </View>
+      </SafeAreaProvider>
     );
   }
 
   return (
-    <>
+    <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
@@ -160,7 +165,7 @@ export default function RootLayout() {
         <Stack.Screen name="insights" />
         <Stack.Screen name="settings" />
       </Stack>
-    </>
+    </SafeAreaProvider>
   );
 }
 
