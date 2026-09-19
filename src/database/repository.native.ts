@@ -100,6 +100,11 @@ export const repository: DatabaseRepository = {
           is_paid INTEGER NOT NULL DEFAULT 0,
           settled_at TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
       `);
 
       // Safe non-destructive column migrations for existing SQLite databases
@@ -115,21 +120,27 @@ export const repository: DatabaseRepository = {
   seedDefaultCategories() {
     const db = getDb();
     const existing = db.select().from(schema.categories).all();
-    if (existing.length > 0) return;
+    const existingKeys = new Set(
+      existing.map((c) => `${c.name.trim().toLowerCase()}_${c.type.toLowerCase()}`)
+    );
 
     const now = getTodayISO();
     for (const cat of ALL_DEFAULT_CATEGORIES) {
-      db.insert(schema.categories)
-        .values({
-          id: generateId(),
-          name: cat.name,
-          icon: cat.icon,
-          color: cat.color,
-          type: cat.type,
-          isDefault: true,
-          createdAt: now,
-        })
-        .run();
+      const key = `${cat.name.trim().toLowerCase()}_${cat.type.toLowerCase()}`;
+      if (!existingKeys.has(key)) {
+        db.insert(schema.categories)
+          .values({
+            id: generateId(),
+            name: cat.name,
+            icon: cat.icon,
+            color: cat.color,
+            type: cat.type,
+            isDefault: true,
+            createdAt: now,
+          })
+          .run();
+        existingKeys.add(key);
+      }
     }
   },
 
@@ -350,4 +361,55 @@ export const repository: DatabaseRepository = {
       .where(eq(schema.splitExpenses.id, splitExpenseId))
       .run();
   },
+
+  // ─── Settings ────────────────────────────────────────────────────────
+  getSetting(key: string): string | null {
+    const db = getDb();
+    const res = db.select().from(schema.appSettings).where(eq(schema.appSettings.key, key)).all();
+    return res.length > 0 ? res[0].value : null;
+  },
+
+  setSetting(key: string, value: string): void {
+    const db = getDb();
+    const existing = db.select().from(schema.appSettings).where(eq(schema.appSettings.key, key)).all();
+    if (existing.length > 0) {
+      db.update(schema.appSettings).set({ value }).where(eq(schema.appSettings.key, key)).run();
+    } else {
+      db.insert(schema.appSettings).values({ key, value }).run();
+    }
+  },
+
+  getAppSettings() {
+    const hasOnboardedStr = this.getSetting('hasOnboarded');
+    const themeModeStr = this.getSetting('themeMode');
+    const userNameStr = this.getSetting('userName');
+    const currencyStr = this.getSetting('currency');
+
+    return {
+      hasOnboarded: hasOnboardedStr === 'true',
+      themeMode: (themeModeStr as any) || 'light',
+      userProfile: {
+        name: userNameStr || '',
+        currency: currencyStr || '₹',
+      },
+    };
+  },
+
+  saveAppSettings(settings) {
+    if (settings.hasOnboarded !== undefined) {
+      this.setSetting('hasOnboarded', String(settings.hasOnboarded));
+    }
+    if (settings.themeMode !== undefined) {
+      this.setSetting('themeMode', settings.themeMode);
+    }
+    if (settings.userProfile) {
+      if (settings.userProfile.name !== undefined) {
+        this.setSetting('userName', settings.userProfile.name);
+      }
+      if (settings.userProfile.currency !== undefined) {
+        this.setSetting('currency', settings.userProfile.currency);
+      }
+    }
+  },
 };
+

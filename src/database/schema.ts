@@ -69,3 +69,10 @@ export const splitParticipants = sqliteTable('split_participants', {
   isPaid: integer('is_paid', { mode: 'boolean' }).notNull().default(false),
   settledAt: text('settled_at'),
 });
+
+// ─── App Settings ──────────────────────────────────────────────────────
+export const appSettings = sqliteTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+});
+

@@ -11,7 +11,7 @@ import {
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { initializeDatabase } from '@/database';
+import { initializeDatabase, seedDefaultCategories } from '@/database';
 import { useAppStore } from '@/store/appStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useCategoryStore } from '@/store/categoryStore';
@@ -33,6 +33,8 @@ export default function RootLayout() {
   const { colors: themeColors, isDark } = useTheme();
   const setIsDbReady = useAppStore((s) => s.setIsDbReady);
   const isDbReady = useAppStore((s) => s.isDbReady);
+  const isHydrated = useAppStore((s) => s.isHydrated);
+  const setIsHydrated = useAppStore((s) => s.setIsHydrated);
 
   const [initStatus, setInitStatus] = useState<'initializing' | 'ready' | 'error'>('initializing');
   const [initError, setInitError] = useState<string | null>(null);
@@ -48,16 +50,24 @@ export default function RootLayout() {
     setInitStatus('initializing');
     setInitError(null);
     try {
-      // Initialize database (SQLite on Android, localStorage on Web)
+      // 1. Initialize database & safe migrations (SQLite on Android, localStorage on Web)
       await initializeDatabase();
 
-      // Load all data into stores
+      // 2. Idempotently seed any missing default categories (never duplicate)
+      seedDefaultCategories();
+
+      // 3. Load persisted app settings & profile (including legacy data fallback)
+      useAppStore.getState().loadSettings();
+
+      // 4. Load all data stores
       useAccountStore.getState().loadAccounts();
       useCategoryStore.getState().loadCategories();
       useTransactionStore.getState().loadTransactions();
       useFriendStore.getState().loadFriends();
       useSplitStore.getState().loadSplitExpenses();
 
+      // 5. Complete hydration
+      setIsHydrated(true);
       setIsDbReady(true);
       setInitStatus('ready');
     } catch (e: any) {
@@ -65,17 +75,17 @@ export default function RootLayout() {
       setInitError(e?.message || 'Unknown initialization error');
       setInitStatus('error');
     }
-  }, [setIsDbReady]);
+  }, [setIsDbReady, setIsHydrated]);
 
   useEffect(() => {
     prepare();
   }, [prepare]);
 
   useEffect(() => {
-    if (fontsLoaded && isDbReady && initStatus === 'ready') {
+    if (fontsLoaded && isDbReady && isHydrated && initStatus === 'ready') {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded, isDbReady, initStatus]);
+  }, [fontsLoaded, isDbReady, isHydrated, initStatus]);
 
   // Error State UI with Retry
   if (initStatus === 'error') {
@@ -111,7 +121,7 @@ export default function RootLayout() {
   }
 
   // Initializing / Loading State UI
-  if (!fontsLoaded || !isDbReady || initStatus !== 'ready') {
+  if (!fontsLoaded || !isDbReady || !isHydrated || initStatus !== 'ready') {
     return (
       <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
         <View
@@ -145,12 +155,14 @@ export default function RootLayout() {
     <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack
+        initialRouteName="index"
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: themeColors.background },
           animation: 'slide_from_right',
         }}
       >
+        <Stack.Screen name="index" />
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen

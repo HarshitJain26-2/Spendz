@@ -53,4 +53,19 @@ export interface DatabaseRepository {
     settledAt: string,
     newStatus: SplitStatus
   ): void;
+
+  // Settings
+  getSetting(key: string): string | null;
+  setSetting(key: string, value: string): void;
+  getAppSettings(): {
+    hasOnboarded: boolean;
+    themeMode: import('@/types').ThemeMode;
+    userProfile: import('@/types').UserProfile;
+  };
+  saveAppSettings(settings: Partial<{
+    hasOnboarded: boolean;
+    themeMode: import('@/types').ThemeMode;
+    userProfile: Partial<import('@/types').UserProfile>;
+  }>): void;
 }
+

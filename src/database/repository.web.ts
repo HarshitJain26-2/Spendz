@@ -18,6 +18,7 @@ const STORAGE_KEYS = {
   FRIENDS: 'spendz_web_friends',
   SPLITS: 'spendz_web_splits',
   PARTICIPANTS: 'spendz_web_split_participants',
+  SETTINGS: 'spendz_web_settings',
 };
 
 function getStorage<T>(key: string, fallback: T): T {
@@ -51,20 +52,34 @@ export const repository: DatabaseRepository = {
 
   seedDefaultCategories() {
     const existing = getStorage<Category[]>(STORAGE_KEYS.CATEGORIES, []);
-    if (existing.length > 0) return;
+    const existingKeys = new Set(
+      existing.map((c) => `${c.name.trim().toLowerCase()}_${c.type.toLowerCase()}`)
+    );
 
     const now = getTodayISO();
-    const seeded: Category[] = ALL_DEFAULT_CATEGORIES.map((cat) => ({
-      id: generateId(),
-      name: cat.name,
-      icon: cat.icon,
-      color: cat.color,
-      type: cat.type,
-      isDefault: true,
-      createdAt: now,
-    }));
+    let updated = false;
+    const result = [...existing];
 
-    setStorage(STORAGE_KEYS.CATEGORIES, seeded);
+    for (const cat of ALL_DEFAULT_CATEGORIES) {
+      const key = `${cat.name.trim().toLowerCase()}_${cat.type.toLowerCase()}`;
+      if (!existingKeys.has(key)) {
+        result.push({
+          id: generateId(),
+          name: cat.name,
+          icon: cat.icon,
+          color: cat.color,
+          type: cat.type,
+          isDefault: true,
+          createdAt: now,
+        });
+        existingKeys.add(key);
+        updated = true;
+      }
+    }
+
+    if (updated || existing.length === 0) {
+      setStorage(STORAGE_KEYS.CATEGORIES, result);
+    }
   },
 
   // ─── Accounts ────────────────────────────────────────────────────────
@@ -268,4 +283,50 @@ export const repository: DatabaseRepository = {
     );
     setStorage(STORAGE_KEYS.SPLITS, updatedSplits);
   },
+
+  // ─── Settings ────────────────────────────────────────────────────────
+  getSetting(key: string): string | null {
+    const settings = getStorage<Record<string, string>>(STORAGE_KEYS.SETTINGS, {});
+    return settings[key] !== undefined ? settings[key] : null;
+  },
+
+  setSetting(key: string, value: string): void {
+    const settings = getStorage<Record<string, string>>(STORAGE_KEYS.SETTINGS, {});
+    settings[key] = value;
+    setStorage(STORAGE_KEYS.SETTINGS, settings);
+  },
+
+  getAppSettings() {
+    const hasOnboardedStr = this.getSetting('hasOnboarded');
+    const themeModeStr = this.getSetting('themeMode');
+    const userNameStr = this.getSetting('userName');
+    const currencyStr = this.getSetting('currency');
+
+    return {
+      hasOnboarded: hasOnboardedStr === 'true',
+      themeMode: (themeModeStr as any) || 'light',
+      userProfile: {
+        name: userNameStr || '',
+        currency: currencyStr || '₹',
+      },
+    };
+  },
+
+  saveAppSettings(settings) {
+    if (settings.hasOnboarded !== undefined) {
+      this.setSetting('hasOnboarded', String(settings.hasOnboarded));
+    }
+    if (settings.themeMode !== undefined) {
+      this.setSetting('themeMode', settings.themeMode);
+    }
+    if (settings.userProfile) {
+      if (settings.userProfile.name !== undefined) {
+        this.setSetting('userName', settings.userProfile.name);
+      }
+      if (settings.userProfile.currency !== undefined) {
+        this.setSetting('currency', settings.userProfile.currency);
+      }
+    }
+  },
 };
+
