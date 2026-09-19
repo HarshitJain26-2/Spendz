@@ -21,6 +21,15 @@ import {
   RotateCcw,
   Plus,
   MoreHorizontal,
+  Dumbbell,
+  Sparkles,
+  Coffee,
+  Film,
+  Fuel,
+  Pill,
+  Briefcase,
+  Music,
+  Smile,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -46,6 +55,15 @@ const iconMap: Record<string, React.FC<LucideProps>> = {
   RotateCcw,
   Plus,
   MoreHorizontal,
+  Dumbbell,
+  Sparkles,
+  Coffee,
+  Film,
+  Fuel,
+  Pill,
+  Briefcase,
+  Music,
+  Smile,
 };
 
 interface DynamicIconProps extends LucideProps {
