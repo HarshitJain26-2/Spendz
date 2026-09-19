@@ -10,6 +10,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
+  Edit2,
   Trash2,
   HandCoins,
   ChevronRight,
@@ -118,19 +119,39 @@ export default function FriendDetailScreen() {
         >
           <ArrowLeft size={22} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          Friend Details
-        </Text>
-        <TouchableOpacity
-          onPress={handleDelete}
-          activeOpacity={0.7}
-          style={[
-            styles.iconBtn,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
+        <Text
+          style={[styles.headerTitle, { color: colors.textPrimary }]}
+          numberOfLines={1}
         >
-          <Trash2 size={18} color={colors.expense} />
-        </TouchableOpacity>
+          {friend.name}
+        </Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() =>
+              router.push({
+                pathname: '/friends/edit' as any,
+                params: { id: friend.id },
+              })
+            }
+            activeOpacity={0.7}
+            style={[
+              styles.iconBtn,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <Edit2 size={18} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleDelete}
+            activeOpacity={0.7}
+            style={[
+              styles.iconBtn,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <Trash2 size={18} color={colors.expense} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -301,8 +322,15 @@ const styles = StyleSheet.create({
     padding: spacing.xs,
   },
   headerTitle: {
+    flex: 1,
     fontFamily: typography.fontFamily.bold,
     fontSize: 18,
+    marginHorizontal: spacing.sm,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   iconBtn: {
     width: 36,

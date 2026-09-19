@@ -21,6 +21,7 @@ import { useTransactionStore } from '@/store/transactionStore';
 import { useCategoryStore } from '@/store/categoryStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useSplitStore } from '@/store/splitStore';
+import { useFriendStore } from '@/store/friendStore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
@@ -49,6 +50,7 @@ export default function TransactionDetailScreen() {
     () => splitExpenses.find((s) => s.transactionId === id),
     [splitExpenses, id]
   );
+  const friends = useFriendStore((s) => s.friends);
 
   if (!transaction) {
     return (
@@ -272,25 +274,37 @@ export default function TransactionDetailScreen() {
               </View>
             </View>
 
-            {splitExpense.participants.map((p, idx) => (
-              <View
-                key={p.id}
-                style={[
-                  styles.participantRow,
-                  idx > 0 && { borderTopColor: colors.border, borderTopWidth: 1 },
-                ]}
-              >
-                <View style={styles.participantLeft}>
-                  <Avatar name={p.name} size={34} />
-                  <Text
-                    style={[
-                      styles.participantName,
-                      { color: colors.textPrimary },
-                    ]}
-                  >
-                    {p.name}
-                  </Text>
-                </View>
+            {splitExpense.participants.map((p, idx) => {
+              const participantFriend = p.friendId
+                ? friends.find((f) => f.id === p.friendId)
+                : null;
+              const displayName = participantFriend
+                ? participantFriend.name
+                : p.name;
+
+              return (
+                <View
+                  key={p.id}
+                  style={[
+                    styles.participantRow,
+                    idx > 0 && { borderTopColor: colors.border, borderTopWidth: 1 },
+                  ]}
+                >
+                  <View style={styles.participantLeft}>
+                    <Avatar
+                      name={displayName}
+                      size={34}
+                      color={participantFriend?.avatarColor}
+                    />
+                    <Text
+                      style={[
+                        styles.participantName,
+                        { color: colors.textPrimary },
+                      ]}
+                    >
+                      {displayName}
+                    </Text>
+                  </View>
 
                 <View style={styles.participantRight}>
                   <Text
@@ -322,7 +336,8 @@ export default function TransactionDetailScreen() {
                   </View>
                 </View>
               </View>
-            ))}
+            );
+          })}
           </Card>
         )}
 
