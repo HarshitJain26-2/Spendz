@@ -15,6 +15,8 @@ interface DateTimeCardsProps {
   date: string; // ISO date string YYYY-MM-DD
   time?: string; // e.g. "08:42 PM"
   onChangeDate?: (date: string) => void;
+  onDatePress?: () => void;
+  onTimePress?: () => void;
   style?: ViewStyle;
 }
 
@@ -22,6 +24,8 @@ export const DateTimeCards: React.FC<DateTimeCardsProps> = ({
   date,
   time,
   onChangeDate,
+  onDatePress,
+  onTimePress,
   style,
 }) => {
   const { colors } = useTheme();
@@ -71,6 +75,7 @@ export const DateTimeCards: React.FC<DateTimeCardsProps> = ({
       <TouchableOpacity
         activeOpacity={0.7}
         onPress={() => {
+          onDatePress?.();
           // Toggle Today / Yesterday on quick tap if simple
           if (onChangeDate) {
             const todayISO = new Date().toISOString().split('T')[0];
@@ -103,7 +108,11 @@ export const DateTimeCards: React.FC<DateTimeCardsProps> = ({
       </TouchableOpacity>
 
       {/* Time Card */}
-      <View
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => {
+          onTimePress?.();
+        }}
         style={[
           styles.card,
           {
@@ -124,7 +133,7 @@ export const DateTimeCards: React.FC<DateTimeCardsProps> = ({
             {getFormattedTime()}
           </Text>
         </View>
-      </View>
+      </TouchableOpacity>
     </View>
   );
 };

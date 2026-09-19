@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
+  TouchableOpacity,
   StyleSheet,
   type ViewStyle,
 } from 'react-native';
@@ -15,6 +16,7 @@ interface NoteCardProps {
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
+  onFocus?: () => void;
   style?: ViewStyle;
 }
 
@@ -22,12 +24,21 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   value,
   onChangeText,
   placeholder = 'Dinner with team',
+  onFocus,
   style,
 }) => {
   const { colors } = useTheme();
+  const inputRef = useRef<TextInput>(null);
+
+  const handleCardPress = () => {
+    onFocus?.();
+    inputRef.current?.focus();
+  };
 
   return (
-    <View
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={handleCardPress}
       style={[
         styles.card,
         {
@@ -51,8 +62,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           NOTE
         </Text>
         <TextInput
+          ref={inputRef}
           value={value}
           onChangeText={onChangeText}
+          onFocus={onFocus}
           placeholder={placeholder}
           placeholderTextColor={colors.textTertiary}
           style={[styles.input, { color: colors.textPrimary }]}
@@ -63,7 +76,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
       <View style={styles.rightIcon}>
         <Mic size={18} color={colors.textTertiary} strokeWidth={1.8} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 

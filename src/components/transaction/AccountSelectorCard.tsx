@@ -19,6 +19,7 @@ interface AccountSelectorCardProps {
   accounts: Account[];
   selectedId: string;
   onSelect: (account: Account) => void;
+  onOpen?: () => void;
   label?: string;
   style?: ViewStyle;
 }
@@ -27,6 +28,7 @@ export const AccountSelectorCard: React.FC<AccountSelectorCardProps> = ({
   accounts,
   selectedId,
   onSelect,
+  onOpen,
   label = 'PAID FROM',
   style,
 }) => {
@@ -51,7 +53,10 @@ export const AccountSelectorCard: React.FC<AccountSelectorCardProps> = ({
   return (
     <>
       <TouchableOpacity
-        onPress={() => setSheetVisible(true)}
+        onPress={() => {
+          onOpen?.();
+          setSheetVisible(true);
+        }}
         activeOpacity={0.7}
         style={[
           styles.card,

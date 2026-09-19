@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   Image,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { ArrowLeft, RotateCcw, Zap } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { Avatar } from '@/components/ui/Avatar';
@@ -43,12 +45,25 @@ export default function AddExpenseScreen() {
   const accounts = useAccountStore((s) => s.accounts);
 
   const [amount, setAmount] = useState('500');
+  const [isAmountFocused, setIsAmountFocused] = useState(false);
   const [categoryId, setCategoryId] = useState<string | null>(
     expenseCategories[0]?.id || null
   );
   const [accountId, setAccountId] = useState(accounts[0]?.id || '');
   const [date, setDate] = useState(getTodayISO());
   const [note, setNote] = useState('');
+
+  // Android hardware back press handler: dismiss keypad if open, else navigate back
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isAmountFocused) {
+        setIsAmountFocused(false);
+        return true;
+      }
+      return false;
+    });
+    return () => backHandler.remove();
+  }, [isAmountFocused]);
 
   // Keypad actions
   const handleKeyPress = (key: string) => {
@@ -87,6 +102,7 @@ export default function AddExpenseScreen() {
   };
 
   const handleResetDraft = () => {
+    setIsAmountFocused(false);
     setAmount('');
     setNote('');
     if (expenseCategories[0]) setCategoryId(expenseCategories[0].id);
@@ -98,6 +114,7 @@ export default function AddExpenseScreen() {
   const isValid = parsedAmount > 0 && Boolean(accountId);
 
   const handleSubmit = () => {
+    setIsAmountFocused(false);
     if (!isValid) return;
 
     addTransaction({
@@ -146,6 +163,7 @@ export default function AddExpenseScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={() => setIsAmountFocused(false)}
       >
         {/* 2. Sub-Header (Quick Entry + Reset Draft) */}
         <View style={styles.subHeader}>
@@ -176,12 +194,14 @@ export default function AddExpenseScreen() {
         </View>
 
         {/* 3. Hero Amount Card */}
-        <View
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => setIsAmountFocused(true)}
           style={[
             styles.amountCard,
             {
               backgroundColor: colors.surface,
-              borderColor: colors.border,
+              borderColor: isAmountFocused ? colors.accent : colors.border,
             },
             shadows.sm,
           ]}
@@ -198,7 +218,9 @@ export default function AddExpenseScreen() {
             <Text style={[styles.amountValue, { color: colors.textPrimary }]}>
               {amount || '0'}
             </Text>
-            <View style={[styles.cursor, { backgroundColor: colors.accent }]} />
+            {isAmountFocused && (
+              <View style={[styles.cursor, { backgroundColor: colors.accent }]} />
+            )}
           </View>
 
           {/* Number in words */}
@@ -209,7 +231,10 @@ export default function AddExpenseScreen() {
           {/* Amount Shortcuts */}
           <View style={styles.shortcutsRow}>
             <TouchableOpacity
-              onPress={() => handleAddQuickAmount(100)}
+              onPress={() => {
+                setIsAmountFocused(true);
+                handleAddQuickAmount(100);
+              }}
               activeOpacity={0.7}
               style={[
                 styles.shortcutChip,
@@ -227,7 +252,10 @@ export default function AddExpenseScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => handleAddQuickAmount(500)}
+              onPress={() => {
+                setIsAmountFocused(true);
+                handleAddQuickAmount(500);
+              }}
               activeOpacity={0.7}
               style={[
                 styles.shortcutChip,
@@ -245,7 +273,10 @@ export default function AddExpenseScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => handleAddQuickAmount(1000)}
+              onPress={() => {
+                setIsAmountFocused(true);
+                handleAddQuickAmount(1000);
+              }}
               activeOpacity={0.7}
               style={[
                 styles.shortcutChip,
@@ -263,7 +294,10 @@ export default function AddExpenseScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={handleRoundOff}
+              onPress={() => {
+                setIsAmountFocused(true);
+                handleRoundOff();
+              }}
               activeOpacity={0.7}
               style={[
                 styles.roundOffChip,
@@ -275,40 +309,58 @@ export default function AddExpenseScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* 4. Category Selector Card */}
         <CategorySelectorCard
           categories={expenseCategories}
           selectedId={categoryId}
-          onSelect={(c) => setCategoryId(c.id)}
+          onSelect={(c) => {
+            setIsAmountFocused(false);
+            setCategoryId(c.id);
+          }}
+          onOpen={() => setIsAmountFocused(false)}
         />
 
         {/* 5. Paid From Account Selector Card */}
         <AccountSelectorCard
           accounts={accounts}
           selectedId={accountId}
-          onSelect={(a) => setAccountId(a.id)}
+          onSelect={(a) => {
+            setIsAmountFocused(false);
+            setAccountId(a.id);
+          }}
+          onOpen={() => setIsAmountFocused(false)}
         />
 
         {/* 6. Date & Time Cards */}
         <DateTimeCards
           date={date}
           onChangeDate={setDate}
+          onDatePress={() => setIsAmountFocused(false)}
+          onTimePress={() => setIsAmountFocused(false)}
         />
 
         {/* 7. Note Card */}
         <NoteCard
           value={note}
           onChangeText={setNote}
+          onFocus={() => setIsAmountFocused(false)}
         />
 
         {/* 8. Tactile Numeric Keypad */}
-        <NumericKeypad
-          onKeyPress={handleKeyPress}
-          onDelete={handleDelete}
-          style={styles.keypad}
-        />
+        {isAmountFocused && (
+          <Animated.View
+            entering={FadeInDown.duration(200)}
+            exiting={FadeOutDown.duration(150)}
+          >
+            <NumericKeypad
+              onKeyPress={handleKeyPress}
+              onDelete={handleDelete}
+              style={styles.keypad}
+            />
+          </Animated.View>
+        )}
       </ScrollView>
 
       {/* 9. Bottom Save CTA Action */}

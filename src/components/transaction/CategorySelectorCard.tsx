@@ -50,6 +50,7 @@ interface CategorySelectorCardProps {
   categories: Category[];
   selectedId: string | null;
   onSelect: (category: Category) => void;
+  onOpen?: () => void;
   style?: ViewStyle;
 }
 
@@ -57,6 +58,7 @@ export const CategorySelectorCard: React.FC<CategorySelectorCardProps> = ({
   categories,
   selectedId,
   onSelect,
+  onOpen,
   style,
 }) => {
   const { colors } = useTheme();
@@ -68,7 +70,10 @@ export const CategorySelectorCard: React.FC<CategorySelectorCardProps> = ({
   return (
     <>
       <TouchableOpacity
-        onPress={() => setSheetVisible(true)}
+        onPress={() => {
+          onOpen?.();
+          setSheetVisible(true);
+        }}
         activeOpacity={0.7}
         style={[
           styles.card,
