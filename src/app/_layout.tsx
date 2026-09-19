@@ -176,6 +176,7 @@ export default function RootLayout() {
         <Stack.Screen name="friends" />
         <Stack.Screen name="insights" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="reports" />
       </Stack>
     </SafeAreaProvider>
   );

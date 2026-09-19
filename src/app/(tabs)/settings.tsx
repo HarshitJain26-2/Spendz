@@ -18,6 +18,7 @@ import {
   ChevronRight,
   RotateCcw,
   Check,
+  FileText,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useBottomTabInset } from '@/hooks/useBottomTabInset';
@@ -286,6 +287,41 @@ export default function SettingsScreen() {
                   style={[styles.menuSub, { color: colors.textTertiary }]}
                 >
                   {getThemeLabel()}
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={18} color={colors.textTertiary} />
+          </TouchableOpacity>
+
+          <View
+            style={[styles.divider, { backgroundColor: colors.border }]}
+          />
+
+          {/* Reports & Export */}
+          <TouchableOpacity
+            onPress={() => router.push('/reports' as any)}
+            style={styles.menuRow}
+            activeOpacity={0.7}
+          >
+            <View style={styles.menuLeft}>
+              <View
+                style={[
+                  styles.iconContainer,
+                  { backgroundColor: colors.accentLight },
+                ]}
+              >
+                <FileText size={20} color={colors.accent} strokeWidth={2} />
+              </View>
+              <View>
+                <Text
+                  style={[styles.menuTitle, { color: colors.textPrimary }]}
+                >
+                  Reports & Export
+                </Text>
+                <Text
+                  style={[styles.menuSub, { color: colors.textTertiary }]}
+                >
+                  Export your spending data
                 </Text>
               </View>
             </View>
