@@ -129,6 +129,18 @@ export default function EditTransactionScreen() {
 
       let updatedParticipants = splitExpense.participants;
 
+      if (updatedParticipants && updatedParticipants.length > 0) {
+        const isAmountChanged = parsedAmount !== splitExpense.totalAmount;
+        if (isAmountChanged && splitExpense.splitMethod === 'equal') {
+          const count = updatedParticipants.length;
+          const equalShare = Math.round((parsedAmount / count) * 100) / 100;
+          updatedParticipants = updatedParticipants.map((p, idx) => ({
+            ...p,
+            amount: idx === 0 ? parsedAmount - equalShare * (count - 1) : equalShare,
+          }));
+        }
+      }
+
       if (isPayerChanged && updatedParticipants) {
         const now = getTodayISO();
         updatedParticipants = updatedParticipants.map((p) => {

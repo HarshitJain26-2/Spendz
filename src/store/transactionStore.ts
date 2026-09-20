@@ -188,6 +188,13 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       }
     }
 
+    // Immediately update splitStore in-memory state if there is a linked split
+    if (split) {
+      useSplitStore.setState((state) => ({
+        splitExpenses: state.splitExpenses.filter((s) => s.transactionId !== id),
+      }));
+    }
+
     repository.deleteTransaction(id);
 
     set((state) => ({

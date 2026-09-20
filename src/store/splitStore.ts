@@ -32,6 +32,8 @@ interface SplitState {
     participants?: SplitParticipant[]
   ) => void;
   settleSplitParticipant: (splitExpenseId: string, participantId: string) => void;
+  deleteSplitExpense: (splitExpenseId: string) => void;
+  deleteSplitByTransactionId: (transactionId: string) => void;
   getSplitsByFriend: (friendId: string) => SplitExpense[];
   getFriendBalance: (friendId: string) => number;
   getSplitByTransactionId: (transactionId: string) => SplitExpense | undefined;
@@ -154,6 +156,22 @@ export const useSplitStore = create<SplitState>((set, get) => ({
               participants: updatedParticipants,
             }
           : s
+      ),
+    }));
+  },
+
+  deleteSplitExpense: (splitExpenseId) => {
+    repository.deleteSplitExpense(splitExpenseId);
+    set((state) => ({
+      splitExpenses: state.splitExpenses.filter((s) => s.id !== splitExpenseId),
+    }));
+  },
+
+  deleteSplitByTransactionId: (transactionId) => {
+    repository.deleteSplitByTransactionId(transactionId);
+    set((state) => ({
+      splitExpenses: state.splitExpenses.filter(
+        (s) => s.transactionId !== transactionId
       ),
     }));
   },
