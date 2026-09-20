@@ -7,11 +7,10 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   Edit2,
-  Trash2,
   HandCoins,
   ChevronRight,
 } from 'lucide-react-native';
@@ -26,19 +25,18 @@ import { formatCurrency } from '@/utils/currency';
 import { formatRelativeDate } from '@/utils/date';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius, shadows } from '@/theme/spacing';
-import { showAlert } from '@/utils/alert';
 
 export default function FriendDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const friends = useFriendStore((s) => s.friends);
   const friend = useMemo(
     () => friends.find((f) => f.id === id),
     [friends, id]
   );
-  const deleteFriend = useFriendStore((s) => s.deleteFriend);
   const splitExpenses = useSplitStore((s) => s.splitExpenses);
   const getFriendBalance = useSplitStore((s) => s.getFriendBalance);
   const transactions = useTransactionStore((s) => s.transactions);
@@ -47,15 +45,23 @@ export default function FriendDetailScreen() {
     () => (friend ? getFriendBalance(friend.id) : 0),
     [friend, splitExpenses, getFriendBalance]
   );
-  const splits = useMemo(
-    () =>
-      friend
-        ? splitExpenses.filter((split) =>
-            split.participants?.some((p) => p.friendId === friend.id)
-          )
-        : [],
-    [friend, splitExpenses]
-  );
+
+  const splits = useMemo(() => {
+    if (!friend) return [];
+    return splitExpenses
+      .filter(
+        (split) =>
+          (split.paidByFriendId === friend.id ||
+            split.participants?.some((p) => p.friendId === friend.id)) &&
+          transactions.some((t) => t.id === split.transactionId)
+      )
+      .sort((a, b) => {
+        const txA = transactions.find((t) => t.id === a.transactionId);
+        const txB = transactions.find((t) => t.id === b.transactionId);
+        if (!txA || !txB) return 0;
+        return new Date(txB.date).getTime() - new Date(txA.date).getTime();
+      });
+  }, [friend, splitExpenses, transactions]);
 
   if (!friend) {
     return (
@@ -63,7 +69,7 @@ export default function FriendDetailScreen() {
         style={[styles.container, { backgroundColor: colors.background }]}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <ArrowLeft size={24} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
@@ -74,31 +80,16 @@ export default function FriendDetailScreen() {
     );
   }
 
-  const handleDelete = () => {
-    showAlert(
-      'Delete Friend',
-      `Are you sure you want to delete ${friend.name}? This will remove them from your friends list.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            deleteFriend(friend.id);
-            router.back();
-          },
-        },
-      ]
-    );
-  };
-
   const isOwed = balance > 0;
   const isOwe = balance < 0;
+  const isSettled = balance === 0;
+
   const badgeBg = isOwed
     ? colors.incomeLight
     : isOwe
     ? colors.expenseLight
     : colors.pastelNeutral;
+
   const badgeText = isOwed
     ? colors.income
     : isOwe
@@ -141,26 +132,19 @@ export default function FriendDetailScreen() {
           >
             <Edit2 size={18} color={colors.textPrimary} />
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleDelete}
-            activeOpacity={0.7}
-            style={[
-              styles.iconBtn,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          >
-            <Trash2 size={18} color={colors.expense} />
-          </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom, spacing.xl) + spacing.lg },
+        ]}
       >
         {/* Profile Card */}
         <Card style={styles.profileCard} padding="lg">
-          <Avatar name={friend.name} size={64} />
+          <Avatar name={friend.name} color={friend.avatarColor} size={64} />
           <Text style={[styles.friendName, { color: colors.textPrimary }]}>
             {friend.name}
           </Text>
@@ -170,25 +154,26 @@ export default function FriendDetailScreen() {
             </Text>
           )}
 
-          {/* Balance Status */}
+          {/* Balance Status Header with unambiguous direction */}
           <View style={styles.balanceWrap}>
             <Text style={[styles.balanceCaption, { color: colors.textSecondary }]}>
               {isOwed
                 ? `${friend.name} owes you`
                 : isOwe
                 ? `You owe ${friend.name}`
-                : 'All settled up'}
+                : 'Settled'}
             </Text>
             <View style={[styles.balancePill, { backgroundColor: badgeBg }]}>
               <Text style={[styles.balanceAmount, { color: badgeText }]}>
-                {balance !== 0
-                  ? (isOwed ? '+' : '-') + formatCurrency(Math.abs(balance))
+                {!isSettled
+                  ? formatCurrency(Math.abs(balance))
                   : '₹0'}
               </Text>
             </View>
           </View>
 
-          {balance !== 0 && (
+          {/* Settle Up Action */}
+          {!isSettled && (
             <View style={styles.settleBtnWrap}>
               <Button
                 title="Settle Up"
@@ -233,19 +218,20 @@ export default function FriendDetailScreen() {
               (p) => p.friendId === null
             );
 
+            // Bilateral relevant amount
             const relevantAmount = isFriendPaid
               ? myParticipant?.amount || 0
               : friendParticipant?.amount || 0;
-            const isSettled = isFriendPaid
+            const itemSettled = isFriendPaid
               ? Boolean(myParticipant?.isPaid)
               : Boolean(friendParticipant?.isPaid);
 
-            const itemPillBg = isSettled
+            const itemPillBg = itemSettled
               ? colors.pastelNeutral
               : isFriendPaid
               ? colors.expenseLight
               : colors.incomeLight;
-            const itemPillText = isSettled
+            const itemPillText = itemSettled
               ? colors.pastelNeutralText
               : isFriendPaid
               ? colors.expense
@@ -283,14 +269,16 @@ export default function FriendDetailScreen() {
                     ]}
                   >
                     {transaction ? formatRelativeDate(transaction.date) : ''}
-                    {isFriendPaid ? ` · Paid by ${friend.name}` : ' · Paid by You'}
+                    {isFriendPaid
+                      ? ` · Paid by ${friend.name} (${formatCurrency(split.totalAmount)})`
+                      : ` · Paid by You (${formatCurrency(split.totalAmount)})`}
                   </Text>
                 </View>
 
                 <View style={styles.splitItemRight}>
                   <View style={[styles.pillBadge, { backgroundColor: itemPillBg }]}>
                     <Text style={[styles.pillText, { color: itemPillText }]}>
-                      {isSettled
+                      {itemSettled
                         ? 'Settled'
                         : (isFriendPaid ? '-' : '+') + formatCurrency(relevantAmount)}
                     </Text>
@@ -343,7 +331,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xs,
-    paddingBottom: 40,
   },
   profileCard: {
     alignItems: 'center',
@@ -369,13 +356,13 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.caption,
   },
   balancePill: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: borderRadius.full,
   },
   balanceAmount: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 18,
+    fontSize: 20,
   },
   settleBtnWrap: {
     width: '100%',

@@ -1,26 +1,27 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
+  TextInput,
   TouchableOpacity,
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Plus } from 'lucide-react-native';
+import { Search, X, Bell, Plus } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useBottomTabInset } from '@/hooks/useBottomTabInset';
 import { useFriendStore } from '@/store/friendStore';
 import { useSplitStore } from '@/store/splitStore';
 import { useAppStore } from '@/store/appStore';
-import { BalanceSummary } from '@/components/friends/BalanceSummary';
+import { BalanceSummary, type FriendBalanceItem } from '@/components/friends/BalanceSummary';
 import { FriendCard } from '@/components/friends/FriendCard';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { typography } from '@/theme/typography';
-import { spacing, borderRadius } from '@/theme/spacing';
+import { spacing, borderRadius, shadows } from '@/theme/spacing';
 
 export default function FriendsScreen() {
   const router = useRouter();
@@ -28,39 +29,83 @@ export default function FriendsScreen() {
   const bottomTabInset = useBottomTabInset(spacing.lg);
   const userProfile = useAppStore((s) => s.userProfile);
 
+  // Stable individual selectors to avoid unnecessary re-renders or getSnapshot warnings
   const friends = useFriendStore((s) => s.friends);
   const splitExpenses = useSplitStore((s) => s.splitExpenses);
   const getFriendBalance = useSplitStore((s) => s.getFriendBalance);
 
-  // Compute friend balances and total summary
-  const { friendBalances, totalOwed, totalOwe } = useMemo(() => {
-    let owed = 0;
-    let owe = 0;
-    const balances: Array<{ friendId: string; balance: number }> = [];
+  const [searchQuery, setSearchQuery] = useState('');
 
-    for (const friend of friends) {
-      const balance = getFriendBalance(friend.id);
-      balances.push({ friendId: friend.id, balance });
-      if (balance > 0) {
-        owed += balance;
-      } else if (balance < 0) {
-        owe += Math.abs(balance);
+  // 1. Calculate friend balances and total summary
+  const { friendBalanceMap, totalYouOwe, totalOwedToYou, allBreakdown } =
+    useMemo(() => {
+      let owe = 0;
+      let owed = 0;
+      const map = new Map<string, number>();
+      const breakdown: FriendBalanceItem[] = [];
+
+      for (const friend of friends) {
+        const bal = getFriendBalance(friend.id);
+        map.set(friend.id, bal);
+        breakdown.push({ friend, balance: bal });
+        if (bal > 0) {
+          owed += bal;
+        } else if (bal < 0) {
+          owe += Math.abs(bal);
+        }
       }
-    }
 
-    return {
-      friendBalances: balances,
-      totalOwed: owed,
-      totalOwe: owe,
-    };
-  }, [friends, splitExpenses, getFriendBalance]);
+      // Sort breakdown by absolute balance descending
+      breakdown.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+
+      return {
+        friendBalanceMap: map,
+        totalYouOwe: owe,
+        totalOwedToYou: owed,
+        allBreakdown: breakdown,
+      };
+    }, [friends, splitExpenses, getFriendBalance]);
+
+  // 2. Filter & sort friends deterministically
+  const sortedFilteredFriends = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = friends.filter((f) => {
+      if (!query) return true;
+      const nameMatch = f.name.toLowerCase().includes(query);
+      const phoneMatch = f.phone?.toLowerCase().includes(query);
+      return nameMatch || phoneMatch;
+    });
+
+    return filtered.sort((a, b) => {
+      const balA = friendBalanceMap.get(a.id) || 0;
+      const balB = friendBalanceMap.get(b.id) || 0;
+      const absA = Math.abs(balA);
+      const absB = Math.abs(balB);
+
+      const nonZeroA = absA > 0;
+      const nonZeroB = absB > 0;
+
+      // 1. Non-zero balances come first
+      if (nonZeroA && !nonZeroB) return -1;
+      if (!nonZeroA && nonZeroB) return 1;
+
+      // 2. If both are non-zero, sort by largest absolute balance descending
+      if (nonZeroA && nonZeroB) {
+        if (absB !== absA) return absB - absA;
+        return a.name.localeCompare(b.name);
+      }
+
+      // 3. Settled friends sorted alphabetically by name
+      return a.name.localeCompare(b.name);
+    });
+  }, [friends, searchQuery, friendBalanceMap]);
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={['top', 'left', 'right']}
     >
-      {/* 1. App Top Header */}
+      {/* 1. App Top Header (Matches Activity Header) */}
       <View style={styles.header}>
         <View style={styles.logoGroup}>
           <Image
@@ -80,20 +125,19 @@ export default function FriendsScreen() {
 
         <View style={styles.headerRight}>
           <TouchableOpacity
-            onPress={() => router.push('/friends/add' as any)}
             activeOpacity={0.7}
             style={[
               styles.iconButton,
               { backgroundColor: colors.surface, borderColor: colors.border },
             ]}
           >
-            <Plus size={18} color={colors.textPrimary} strokeWidth={2.4} />
+            <Bell size={18} color={colors.textPrimary} />
           </TouchableOpacity>
           <Avatar name={userProfile.name || 'You'} size={36} />
         </View>
       </View>
 
-      {/* 2. Page Title Row */}
+      {/* 2. Friends Title Row with Count Pill and Add Friend button */}
       <View style={styles.titleRow}>
         <View style={styles.titleWithCount}>
           <Text style={[styles.pageTitle, { color: colors.textPrimary }]}>
@@ -113,8 +157,52 @@ export default function FriendsScreen() {
             </Text>
           </View>
         </View>
+
+        <TouchableOpacity
+          onPress={() => router.push('/friends/add' as any)}
+          activeOpacity={0.7}
+          style={[
+            styles.addFriendBtn,
+            {
+              backgroundColor: colors.accentLight,
+              borderColor: colors.accent,
+            },
+          ]}
+        >
+          <Plus size={15} color={colors.accent} strokeWidth={2.4} />
+          <Text style={[styles.addFriendText, { color: colors.textPrimary }]}>
+            Add Friend
+          </Text>
+        </TouchableOpacity>
       </View>
 
+      {/* 3. Search Bar (Matching Activity Search Bar) */}
+      <View
+        style={[
+          styles.searchContainer,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+          },
+          shadows.sm,
+        ]}
+      >
+        <Search size={18} color={colors.textTertiary} />
+        <TextInput
+          placeholder="Search friends..."
+          placeholderTextColor={colors.textTertiary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          style={[styles.searchInput, { color: colors.textPrimary }]}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <X size={18} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* 4. Friends Content ScrollView */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
@@ -122,28 +210,40 @@ export default function FriendsScreen() {
           { paddingBottom: bottomTabInset },
         ]}
       >
-        {/* Balance Summary Card */}
-        <BalanceSummary youAreOwed={totalOwed} youOwe={totalOwe} />
+        {/* Overall Balance Summary Card (only if friends exist) */}
+        {friends.length > 0 && (
+          <BalanceSummary
+            totalYouOwe={totalYouOwe}
+            totalOwedToYou={totalOwedToYou}
+            breakdown={allBreakdown}
+          />
+        )}
 
         {/* Section Header */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            ALL FRIENDS
-          </Text>
-        </View>
+        {friends.length > 0 && (
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+              ALL FRIENDS
+            </Text>
+          </View>
+        )}
 
-        {/* Friend List */}
+        {/* Friend List / Empty State */}
         {friends.length === 0 ? (
           <EmptyState
-            title="No friends added yet"
-            description="Add your friends to split restaurant bills, rent, group trips, and keep track of who owes who."
-            actionLabel="Add First Friend"
+            title="No friends yet"
+            description="Add friends to split expenses and keep track of who owes whom."
+            actionLabel="+ Add Friend"
             onAction={() => router.push('/friends/add' as any)}
           />
+        ) : sortedFilteredFriends.length === 0 ? (
+          <EmptyState
+            title="No friends found"
+            description="Try another name."
+          />
         ) : (
-          friends.map((friend) => {
-            const fb = friendBalances.find((b) => b.friendId === friend.id);
-            const bal = fb ? fb.balance : 0;
+          sortedFilteredFriends.map((friend) => {
+            const bal = friendBalanceMap.get(friend.id) || 0;
             return (
               <FriendCard
                 key={friend.id}
@@ -209,8 +309,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   titleWithCount: {
     flexDirection: 'row',
@@ -232,12 +334,40 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: typography.fontFamily.medium,
   },
+  addFriendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+  },
+  addFriendText: {
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 13,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.xl,
+    marginVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    height: 44,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    gap: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: typography.fontSize.body,
+  },
   scrollContent: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xs,
   },
   sectionHeader: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     marginBottom: spacing.sm,
   },
   sectionTitle: {
