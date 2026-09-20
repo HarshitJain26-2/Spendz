@@ -48,6 +48,19 @@ export const repository: DatabaseRepository = {
   async init() {
     // Check and seed default categories if needed
     this.seedDefaultCategories();
+
+    // Safe cleanup of any orphaned split records whose transaction_id no longer exists
+    const transactions = getStorage<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, []);
+    const validTxIds = new Set(transactions.map((t) => t.id));
+    const splits = getStorage<Omit<SplitExpense, 'participants'>[]>(STORAGE_KEYS.SPLITS, []);
+    const validSplits = splits.filter((s) => validTxIds.has(s.transactionId));
+    if (validSplits.length !== splits.length) {
+      setStorage(STORAGE_KEYS.SPLITS, validSplits);
+      const validSplitIds = new Set(validSplits.map((s) => s.id));
+      const participants = getStorage<SplitParticipant[]>(STORAGE_KEYS.PARTICIPANTS, []);
+      const validParticipants = participants.filter((p) => validSplitIds.has(p.splitExpenseId));
+      setStorage(STORAGE_KEYS.PARTICIPANTS, validParticipants);
+    }
   },
 
   seedDefaultCategories() {
@@ -161,6 +174,8 @@ export const repository: DatabaseRepository = {
   },
 
   deleteTransaction(id: string) {
+    // Cascade-delete linked split expenses & participants
+    this.deleteSplitByTransactionId(id);
     const transactions = getStorage<Transaction[]>(
       STORAGE_KEYS.TRANSACTIONS,
       []
@@ -282,6 +297,35 @@ export const repository: DatabaseRepository = {
       s.id === splitExpenseId ? { ...s, status: newStatus } : s
     );
     setStorage(STORAGE_KEYS.SPLITS, updatedSplits);
+  },
+
+  deleteSplitExpense(id: string) {
+    const splits = getStorage<Omit<SplitExpense, 'participants'>[]>(
+      STORAGE_KEYS.SPLITS,
+      []
+    );
+    const filteredSplits = splits.filter((s) => s.id !== id);
+    setStorage(STORAGE_KEYS.SPLITS, filteredSplits);
+
+    const participants = getStorage<SplitParticipant[]>(
+      STORAGE_KEYS.PARTICIPANTS,
+      []
+    );
+    const filteredParticipants = participants.filter(
+      (p) => p.splitExpenseId !== id
+    );
+    setStorage(STORAGE_KEYS.PARTICIPANTS, filteredParticipants);
+  },
+
+  deleteSplitByTransactionId(transactionId: string) {
+    const splits = getStorage<Omit<SplitExpense, 'participants'>[]>(
+      STORAGE_KEYS.SPLITS,
+      []
+    );
+    const targetSplits = splits.filter((s) => s.transactionId === transactionId);
+    for (const s of targetSplits) {
+      this.deleteSplitExpense(s.id);
+    }
   },
 
   // ─── Settings ────────────────────────────────────────────────────────

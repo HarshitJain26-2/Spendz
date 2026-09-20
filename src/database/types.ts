@@ -53,6 +53,8 @@ export interface DatabaseRepository {
     settledAt: string,
     newStatus: SplitStatus
   ): void;
+  deleteSplitExpense(id: string): void;
+  deleteSplitByTransactionId(transactionId: string): void;
 
   // Settings
   getSetting(key: string): string | null;

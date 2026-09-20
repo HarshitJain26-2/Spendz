@@ -114,6 +114,16 @@ export const repository: DatabaseRepository = {
       try {
         sqliteDb.execSync(`ALTER TABLE split_expenses ADD COLUMN paid_by_friend_id TEXT;`);
       } catch (_) {}
+
+      // Safe cleanup of any orphaned split records whose transaction_id no longer exists
+      try {
+        sqliteDb.execSync(`
+          DELETE FROM split_participants WHERE split_expense_id IN (
+            SELECT se.id FROM split_expenses se LEFT JOIN transactions t ON se.transaction_id = t.id WHERE t.id IS NULL
+          );
+          DELETE FROM split_expenses WHERE transaction_id NOT IN (SELECT id FROM transactions);
+        `);
+      } catch (_) {}
     }
   },
 
@@ -249,6 +259,8 @@ export const repository: DatabaseRepository = {
 
   deleteTransaction(id: string) {
     const db = getDb();
+    // Cascade-delete linked split expenses & participants idempotently
+    this.deleteSplitByTransactionId(id);
     db.delete(schema.transactions).where(eq(schema.transactions.id, id)).run();
   },
 
@@ -360,6 +372,29 @@ export const repository: DatabaseRepository = {
       .set({ status: newStatus })
       .where(eq(schema.splitExpenses.id, splitExpenseId))
       .run();
+  },
+
+  deleteSplitExpense(id: string) {
+    const db = getDb();
+    db.delete(schema.splitParticipants)
+      .where(eq(schema.splitParticipants.splitExpenseId, id))
+      .run();
+    db.delete(schema.splitExpenses)
+      .where(eq(schema.splitExpenses.id, id))
+      .run();
+  },
+
+  deleteSplitByTransactionId(transactionId: string) {
+    const db = getDb();
+    const linkedSplits = db
+      .select({ id: schema.splitExpenses.id })
+      .from(schema.splitExpenses)
+      .where(eq(schema.splitExpenses.transactionId, transactionId))
+      .all();
+
+    for (const s of linkedSplits) {
+      this.deleteSplitExpense(s.id);
+    }
   },
 
   // ─── Settings ────────────────────────────────────────────────────────
