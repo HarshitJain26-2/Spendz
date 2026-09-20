@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,14 @@ import {
   TouchableOpacity,
   Image,
   Platform,
+  BackHandler,
+  Keyboard,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { ArrowLeft, RotateCcw, ArrowDownRight } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { Avatar } from '@/components/ui/Avatar';
@@ -28,6 +33,15 @@ import { getTodayISO } from '@/utils/date';
 import { typography } from '@/theme/typography';
 import { borderRadius, spacing, shadows } from '@/theme/spacing';
 
+type InputMode =
+  | 'none'
+  | 'amount'
+  | 'note'
+  | 'account'
+  | 'category'
+  | 'date'
+  | 'time';
+
 export default function AddIncomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -42,13 +56,83 @@ export default function AddIncomeScreen() {
   );
   const accounts = useAccountStore((s) => s.accounts);
 
-  const [amount, setAmount] = useState('25000');
+  const [inputMode, setInputMode] = useState<InputMode>('none');
+  const noteInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [noteLayout, setNoteLayout] = useState({ y: 0, height: 0 });
+  const [scrollViewHeight, setScrollViewHeight] = useState(0);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  const [amount, setAmount] = useState('0');
   const [categoryId, setCategoryId] = useState<string | null>(
     incomeCategories[0]?.id || null
   );
   const [accountId, setAccountId] = useState(accounts[0]?.id || '');
   const [date, setDate] = useState(getTodayISO());
-  const [note, setNote] = useState('Monthly Salary');
+  const [note, setNote] = useState('');
+
+  // Dynamically calculate scroll position so NoteCard sits comfortably above the keyboard/CTA
+  const scrollToNote = useCallback(() => {
+    if (!scrollViewRef.current || noteLayout.y <= 0) return;
+    const gap = 24;
+    const visibleH = scrollViewHeight > 0 ? scrollViewHeight : 350;
+    const targetY = Math.max(0, noteLayout.y + noteLayout.height + gap - visibleH);
+    scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+  }, [noteLayout.y, noteLayout.height, scrollViewHeight]);
+
+  // Strict single-input-mode activator: blurs note and dismisses native keyboard when switching away from 'note'
+  const activateInputMode = useCallback((mode: InputMode) => {
+    if (mode !== 'note') {
+      noteInputRef.current?.blur();
+      Keyboard.dismiss();
+    }
+    setInputMode(mode);
+  }, []);
+
+  // Listen to native keyboard appearance and dismissal
+  useEffect(() => {
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setInputMode((current) => (current === 'note' ? 'none' : current));
+      setKeyboardHeight(0);
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    });
+
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+      requestAnimationFrame(() => {
+        scrollToNote();
+      });
+    });
+
+    return () => {
+      hideSubscription.remove();
+      showSubscription.remove();
+    };
+  }, [scrollToNote]);
+
+  // Ensure NoteCard is scrolled into comfortable view when Note mode is activated or layout updates
+  useEffect(() => {
+    if (inputMode === 'note' && noteLayout.y > 0 && scrollViewHeight > 0) {
+      const timer = setTimeout(() => {
+        scrollToNote();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [inputMode, noteLayout.y, scrollViewHeight, scrollToNote]);
+
+  // Android hardware back press handler: dismiss active input mode first, else navigate back
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (inputMode !== 'none') {
+        activateInputMode('none');
+        return true;
+      }
+      return false;
+    });
+    return () => backHandler.remove();
+  }, [inputMode, activateInputMode]);
+
+  const isAmountFocused = inputMode === 'amount';
 
   const handleKeyPress = (key: string) => {
     if (key === '.') {
@@ -86,7 +170,8 @@ export default function AddIncomeScreen() {
   };
 
   const handleResetDraft = () => {
-    setAmount('');
+    activateInputMode('none');
+    setAmount('0');
     setNote('');
     if (incomeCategories[0]) setCategoryId(incomeCategories[0].id);
     if (accounts[0]) setAccountId(accounts[0].id);
@@ -97,6 +182,7 @@ export default function AddIncomeScreen() {
   const isValid = parsedAmount > 0 && Boolean(accountId);
 
   const handleSubmit = () => {
+    activateInputMode('none');
     if (!isValid) return;
 
     addTransaction({
@@ -116,257 +202,347 @@ export default function AddIncomeScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={['top', 'left', 'right']}
     >
-      {/* 1. Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          activeOpacity={0.7}
-          style={styles.backBtn}
-        >
-          <ArrowLeft size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-
-        <View style={styles.titleGroup}>
-          <Image
-            source={require('@/assets/images/spendz-logo.png')}
-            style={styles.logoBadge}
-            resizeMode="contain"
-          />
-          <Text style={[styles.title, { color: colors.textPrimary }]}>
-            New Income
-          </Text>
-        </View>
-
-        <Avatar name={userProfile.name || 'You'} size={36} />
-      </View>
-
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoidingView}
       >
-        {/* 2. Sub-Header */}
-        <View style={styles.subHeader}>
-          <View
-            style={[
-              styles.quickEntryPill,
-              { backgroundColor: colors.incomeLight },
-            ]}
+        {/* 1. Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+            style={styles.backBtn}
           >
-            <Text
-              style={[styles.quickEntryText, { color: colors.income }]}
-            >
-              INCOMING
+            <ArrowLeft size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+
+          <View style={styles.titleGroup}>
+            <Image
+              source={require('@/assets/images/spendz-logo.png')}
+              style={styles.logoBadge}
+              resizeMode="contain"
+            />
+            <Text style={[styles.title, { color: colors.textPrimary }]}>
+              New Income
             </Text>
-            <View style={[styles.mintDot, { backgroundColor: colors.income }]} />
           </View>
 
-          <TouchableOpacity
-            onPress={handleResetDraft}
-            activeOpacity={0.7}
-            style={styles.resetBtn}
-          >
-            <RotateCcw size={14} color={colors.textSecondary} />
-            <Text style={[styles.resetText, { color: colors.textSecondary }]}>
-              Reset draft
-            </Text>
-          </TouchableOpacity>
+          <Avatar name={userProfile.name || 'You'} size={36} />
         </View>
 
-        {/* 3. Hero Amount Card */}
-        <View
-          style={[
-            styles.amountCard,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.scrollContent,
+            inputMode === 'note' && {
+              paddingBottom: Math.max(keyboardHeight > 0 ? 120 : 60, spacing['3xl']),
             },
-            shadows.sm,
           ]}
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={() => {
+            activateInputMode('none');
+          }}
+          onLayout={(e) => {
+            setScrollViewHeight(e.nativeEvent.layout.height);
+          }}
         >
-          <Text style={[styles.amountLabel, { color: colors.textSecondary }]}>
-            Enter Income Received
-          </Text>
-
-          <View style={styles.amountDisplayRow}>
-            <Text style={[styles.amountCurrency, { color: colors.income }]}>
-              +₹
-            </Text>
-            <Text style={[styles.amountValue, { color: colors.textPrimary }]}>
-              {amount || '0'}
-            </Text>
-            <View style={[styles.cursor, { backgroundColor: colors.income }]} />
-          </View>
-
-          <Text style={[styles.inWordsText, { color: colors.textTertiary }]}>
-            {numberToWords(parsedAmount)}
-          </Text>
-
-          {/* Quick Shortcuts */}
-          <View style={styles.shortcutsRow}>
-            <TouchableOpacity
-              onPress={() => handleAddQuickAmount(1000)}
-              activeOpacity={0.7}
+          {/* 2. Sub-Header */}
+          <View style={styles.subHeader}>
+            <View
               style={[
-                styles.shortcutChip,
-                {
-                  backgroundColor: colors.surfaceElevated,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={[styles.shortcutText, { color: colors.textPrimary }]}
-              >
-                +₹1,000
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => handleAddQuickAmount(5000)}
-              activeOpacity={0.7}
-              style={[
-                styles.shortcutChip,
-                {
-                  backgroundColor: colors.surfaceElevated,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={[styles.shortcutText, { color: colors.textPrimary }]}
-              >
-                +₹5,000
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => handleAddQuickAmount(10000)}
-              activeOpacity={0.7}
-              style={[
-                styles.shortcutChip,
-                {
-                  backgroundColor: colors.surfaceElevated,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={[styles.shortcutText, { color: colors.textPrimary }]}
-              >
-                +₹10,000
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleRoundOff}
-              activeOpacity={0.7}
-              style={[
-                styles.roundOffChip,
+                styles.quickEntryPill,
                 { backgroundColor: colors.incomeLight },
               ]}
             >
-              <Text style={[styles.roundOffText, { color: colors.income }]}>
-                Round off
+              <Text
+                style={[styles.quickEntryText, { color: colors.income }]}
+              >
+                INCOMING
+              </Text>
+              <View style={[styles.mintDot, { backgroundColor: colors.income }]} />
+            </View>
+
+            <TouchableOpacity
+              onPress={handleResetDraft}
+              activeOpacity={0.7}
+              style={styles.resetBtn}
+            >
+              <RotateCcw size={14} color={colors.textSecondary} />
+              <Text style={[styles.resetText, { color: colors.textSecondary }]}>
+                Reset draft
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
 
-        {/* 4. Category Selector Card */}
-        <CategorySelectorCard
-          categories={incomeCategories}
-          selectedId={categoryId}
-          onSelect={(c) => setCategoryId(c.id)}
-        />
+          {/* 3. Hero Amount Card */}
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => {
+              activateInputMode('amount');
+            }}
+            style={[
+              styles.amountCard,
+              {
+                backgroundColor: colors.surface,
+                borderColor: isAmountFocused ? colors.income : colors.border,
+              },
+              shadows.sm,
+            ]}
+          >
+            <Text style={[styles.amountLabel, { color: colors.textSecondary }]}>
+              Enter Income Received
+            </Text>
 
-        {/* 5. Received In Account */}
-        <AccountSelectorCard
-          accounts={accounts}
-          selectedId={accountId}
-          label="RECEIVED IN"
-          onSelect={(a) => setAccountId(a.id)}
-        />
+            <View style={styles.amountDisplayRow}>
+              <Text style={[styles.amountCurrency, { color: colors.income }]}>
+                +₹
+              </Text>
+              <Text style={[styles.amountValue, { color: colors.textPrimary }]}>
+                {amount || '0'}
+              </Text>
+              {isAmountFocused && (
+                <View style={[styles.cursor, { backgroundColor: colors.income }]} />
+              )}
+            </View>
 
-        {/* 6. Date & Time Cards */}
-        <DateTimeCards
-          date={date}
-          onChangeDate={setDate}
-        />
+            <Text style={[styles.inWordsText, { color: colors.textTertiary }]}>
+              {numberToWords(parsedAmount)}
+            </Text>
 
-        {/* 7. Note Card */}
-        <NoteCard
-          value={note}
-          placeholder="e.g., Monthly salary, Freelance payment"
-          onChangeText={setNote}
-        />
+            {/* Quick Shortcuts */}
+            <View style={styles.shortcutsRow}>
+              <TouchableOpacity
+                onPress={() => {
+                  activateInputMode('amount');
+                  handleAddQuickAmount(1000);
+                }}
+                activeOpacity={0.7}
+                style={[
+                  styles.shortcutChip,
+                  {
+                    backgroundColor: colors.surfaceElevated,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[styles.shortcutText, { color: colors.textPrimary }]}
+                >
+                  +₹1,000
+                </Text>
+              </TouchableOpacity>
 
-        {/* 8. Numeric Keypad */}
-        <NumericKeypad
-          onKeyPress={handleKeyPress}
-          onDelete={handleDelete}
-          style={styles.keypad}
-        />
-      </ScrollView>
+              <TouchableOpacity
+                onPress={() => {
+                  activateInputMode('amount');
+                  handleAddQuickAmount(5000);
+                }}
+                activeOpacity={0.7}
+                style={[
+                  styles.shortcutChip,
+                  {
+                    backgroundColor: colors.surfaceElevated,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[styles.shortcutText, { color: colors.textPrimary }]}
+                >
+                  +₹5,000
+                </Text>
+              </TouchableOpacity>
 
-      {/* 9. Bottom CTA */}
-      <View
-        style={[
-          styles.bottomBar,
-          {
-            backgroundColor: colors.background,
-            paddingBottom: Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8),
-          },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={handleSubmit}
-          disabled={!isValid}
-          activeOpacity={0.8}
+              <TouchableOpacity
+                onPress={() => {
+                  activateInputMode('amount');
+                  handleAddQuickAmount(10000);
+                }}
+                activeOpacity={0.7}
+                style={[
+                  styles.shortcutChip,
+                  {
+                    backgroundColor: colors.surfaceElevated,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[styles.shortcutText, { color: colors.textPrimary }]}
+                >
+                  +₹10,000
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  activateInputMode('amount');
+                  handleRoundOff();
+                }}
+                activeOpacity={0.7}
+                style={[
+                  styles.roundOffChip,
+                  { backgroundColor: colors.incomeLight },
+                ]}
+              >
+                <Text style={[styles.roundOffText, { color: colors.income }]}>
+                  Round off
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+
+          {/* 4. Category Selector Card */}
+          <CategorySelectorCard
+            categories={incomeCategories}
+            selectedId={categoryId}
+            isOpen={inputMode === 'category'}
+            onOpenChange={(open) => {
+              activateInputMode(open ? 'category' : 'none');
+            }}
+            onSelect={(c) => {
+              setCategoryId(c.id);
+              activateInputMode('none');
+            }}
+            onOpen={() => {
+              activateInputMode('category');
+            }}
+          />
+
+          {/* 5. Received In Account */}
+          <AccountSelectorCard
+            accounts={accounts}
+            selectedId={accountId}
+            isOpen={inputMode === 'account'}
+            onOpenChange={(open) => {
+              activateInputMode(open ? 'account' : 'none');
+            }}
+            label="RECEIVED IN"
+            onSelect={(a) => {
+              setAccountId(a.id);
+              activateInputMode('none');
+            }}
+            onOpen={() => {
+              activateInputMode('account');
+            }}
+          />
+
+          {/* 6. Date & Time Cards */}
+          <DateTimeCards
+            date={date}
+            onChangeDate={setDate}
+            onDatePress={() => {
+              activateInputMode('date');
+            }}
+            onTimePress={() => {
+              activateInputMode('time');
+            }}
+          />
+
+          {/* 7. Note Card */}
+          <NoteCard
+            value={note}
+            placeholder="e.g., Monthly salary, Freelance payment"
+            onChangeText={setNote}
+            inputRef={noteInputRef}
+            onFocus={() => {
+              activateInputMode('note');
+              setTimeout(() => {
+                scrollToNote();
+              }, 80);
+            }}
+            onBlur={() => {
+              if (inputMode === 'note') {
+                activateInputMode('none');
+              }
+            }}
+            onLayout={(e) => {
+              const { y, height } = e.nativeEvent.layout;
+              setNoteLayout({ y, height });
+            }}
+          />
+
+          {/* 8. Numeric Keypad */}
+          {isAmountFocused && (
+            <Animated.View
+              entering={FadeInDown.duration(200)}
+              exiting={FadeOutDown.duration(150)}
+            >
+              <NumericKeypad
+                onKeyPress={handleKeyPress}
+                onDelete={handleDelete}
+                style={styles.keypad}
+              />
+            </Animated.View>
+          )}
+        </ScrollView>
+
+        {/* 9. Bottom CTA */}
+        <View
           style={[
-            styles.saveButton,
+            styles.bottomBar,
             {
-              backgroundColor: isValid ? colors.income : colors.surfaceElevated,
+              backgroundColor: colors.background,
+              paddingBottom:
+                inputMode === 'note'
+                  ? 10
+                  : Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8),
             },
-            shadows.md,
           ]}
         >
-          <View style={styles.saveLeft}>
-            <ArrowDownRight size={20} color={isValid ? '#FFFFFF' : colors.textTertiary} strokeWidth={2.4} />
+          <TouchableOpacity
+            onPress={handleSubmit}
+            disabled={!isValid}
+            activeOpacity={0.8}
+            style={[
+              styles.saveButton,
+              {
+                backgroundColor: isValid ? colors.income : colors.surfaceElevated,
+              },
+              shadows.md,
+            ]}
+          >
+            <View style={styles.saveLeft}>
+              <ArrowDownRight size={20} color={isValid ? '#FFFFFF' : colors.textTertiary} strokeWidth={2.4} />
+              <Text
+                style={[
+                  styles.saveTitle,
+                  { color: isValid ? '#FFFFFF' : colors.textTertiary },
+                ]}
+              >
+                Save Income Entry
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.saveDivider,
+                { backgroundColor: isValid ? 'rgba(255,255,255,0.25)' : colors.border },
+              ]}
+            />
+
             <Text
               style={[
-                styles.saveTitle,
+                styles.saveTotal,
                 { color: isValid ? '#FFFFFF' : colors.textTertiary },
               ]}
             >
-              Save Income Entry
+              TOTAL {formatCurrency(parsedAmount)}
             </Text>
-          </View>
-
-          <View
-            style={[
-              styles.saveDivider,
-              { backgroundColor: isValid ? 'rgba(255,255,255,0.25)' : colors.border },
-            ]}
-          />
-
-          <Text
-            style={[
-              styles.saveTotal,
-              { color: isValid ? '#FFFFFF' : colors.textTertiary },
-            ]}
-          >
-            TOTAL {formatCurrency(parsedAmount)}
-          </Text>
-        </TouchableOpacity>
-      </View>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  keyboardAvoidingView: {
     flex: 1,
   },
   header: {

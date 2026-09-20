@@ -63,7 +63,7 @@ export default function AddExpenseScreen() {
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  const [amount, setAmount] = useState('500');
+  const [amount, setAmount] = useState('0');
   const [categoryId, setCategoryId] = useState<string | null>(
     expenseCategories[0]?.id || null
   );
@@ -172,7 +172,7 @@ export default function AddExpenseScreen() {
 
   const handleResetDraft = () => {
     activateInputMode('none');
-    setAmount('');
+    setAmount('0');
     setNote('');
     if (expenseCategories[0]) setCategoryId(expenseCategories[0].id);
     if (accounts[0]) setAccountId(accounts[0].id);
