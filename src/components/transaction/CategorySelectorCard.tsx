@@ -109,6 +109,8 @@ interface CategorySelectorCardProps {
   categories: Category[];
   selectedId: string | null;
   onSelect: (category: Category) => void;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onOpen?: () => void;
   style?: ViewStyle;
 }
@@ -117,11 +119,24 @@ export const CategorySelectorCard: React.FC<CategorySelectorCardProps> = ({
   categories,
   selectedId,
   onSelect,
+  isOpen,
+  onOpenChange,
   onOpen,
   style,
 }) => {
   const { colors } = useTheme();
-  const [sheetVisible, setSheetVisible] = useState(false);
+  const [internalVisible, setInternalVisible] = useState(false);
+
+  const isControlled = isOpen !== undefined;
+  const sheetVisible = isControlled ? Boolean(isOpen) : internalVisible;
+
+  const setSheetVisible = (visible: boolean) => {
+    if (isControlled) {
+      onOpenChange?.(visible);
+    } else {
+      setInternalVisible(visible);
+    }
+  };
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');

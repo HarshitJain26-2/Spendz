@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   Image,
   Platform,
   BackHandler,
+  Keyboard,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +32,15 @@ import { getTodayISO } from '@/utils/date';
 import { typography } from '@/theme/typography';
 import { borderRadius, spacing, shadows } from '@/theme/spacing';
 
+type InputMode =
+  | 'none'
+  | 'amount'
+  | 'note'
+  | 'account'
+  | 'category'
+  | 'date'
+  | 'time';
+
 export default function AddExpenseScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -44,9 +55,10 @@ export default function AddExpenseScreen() {
   );
   const accounts = useAccountStore((s) => s.accounts);
 
+  const [inputMode, setInputMode] = useState<InputMode>('none');
+  const noteInputRef = useRef<TextInput>(null);
+
   const [amount, setAmount] = useState('500');
-  const [isAmountFocused, setIsAmountFocused] = useState(false);
-  const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(false);
   const [categoryId, setCategoryId] = useState<string | null>(
     expenseCategories[0]?.id || null
   );
@@ -54,21 +66,36 @@ export default function AddExpenseScreen() {
   const [date, setDate] = useState(getTodayISO());
   const [note, setNote] = useState('');
 
-  // Android hardware back press handler: dismiss account picker if open, else dismiss keypad if open, else navigate back
+  // Strict single-input-mode activator: blurs note and dismisses native keyboard when switching away from 'note'
+  const activateInputMode = useCallback((mode: InputMode) => {
+    if (mode !== 'note') {
+      noteInputRef.current?.blur();
+      Keyboard.dismiss();
+    }
+    setInputMode(mode);
+  }, []);
+
+  // Listen to native keyboard dismissal (e.g. Android soft back or dismiss button)
+  useEffect(() => {
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setInputMode((current) => (current === 'note' ? 'none' : current));
+    });
+    return () => hideSubscription.remove();
+  }, []);
+
+  // Android hardware back press handler: dismiss active input mode first, else navigate back
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (isAccountPickerOpen) {
-        setIsAccountPickerOpen(false);
-        return true;
-      }
-      if (isAmountFocused) {
-        setIsAmountFocused(false);
+      if (inputMode !== 'none') {
+        activateInputMode('none');
         return true;
       }
       return false;
     });
     return () => backHandler.remove();
-  }, [isAccountPickerOpen, isAmountFocused]);
+  }, [inputMode, activateInputMode]);
+
+  const isAmountFocused = inputMode === 'amount';
 
   // Keypad actions
   const handleKeyPress = (key: string) => {
@@ -107,8 +134,7 @@ export default function AddExpenseScreen() {
   };
 
   const handleResetDraft = () => {
-    setIsAccountPickerOpen(false);
-    setIsAmountFocused(false);
+    activateInputMode('none');
     setAmount('');
     setNote('');
     if (expenseCategories[0]) setCategoryId(expenseCategories[0].id);
@@ -120,8 +146,7 @@ export default function AddExpenseScreen() {
   const isValid = parsedAmount > 0 && Boolean(accountId);
 
   const handleSubmit = () => {
-    setIsAccountPickerOpen(false);
-    setIsAmountFocused(false);
+    activateInputMode('none');
     if (!isValid) return;
 
     addTransaction({
@@ -171,8 +196,7 @@ export default function AddExpenseScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         onScrollBeginDrag={() => {
-          setIsAmountFocused(false);
-          setIsAccountPickerOpen(false);
+          activateInputMode('none');
         }}
       >
         {/* 2. Sub-Header (Quick Entry + Reset Draft) */}
@@ -207,8 +231,7 @@ export default function AddExpenseScreen() {
         <TouchableOpacity
           activeOpacity={0.9}
           onPress={() => {
-            setIsAccountPickerOpen(false);
-            setIsAmountFocused(true);
+            activateInputMode('amount');
           }}
           style={[
             styles.amountCard,
@@ -245,8 +268,7 @@ export default function AddExpenseScreen() {
           <View style={styles.shortcutsRow}>
             <TouchableOpacity
               onPress={() => {
-                setIsAccountPickerOpen(false);
-                setIsAmountFocused(true);
+                activateInputMode('amount');
                 handleAddQuickAmount(100);
               }}
               activeOpacity={0.7}
@@ -267,8 +289,7 @@ export default function AddExpenseScreen() {
 
             <TouchableOpacity
               onPress={() => {
-                setIsAccountPickerOpen(false);
-                setIsAmountFocused(true);
+                activateInputMode('amount');
                 handleAddQuickAmount(500);
               }}
               activeOpacity={0.7}
@@ -289,8 +310,7 @@ export default function AddExpenseScreen() {
 
             <TouchableOpacity
               onPress={() => {
-                setIsAccountPickerOpen(false);
-                setIsAmountFocused(true);
+                activateInputMode('amount');
                 handleAddQuickAmount(1000);
               }}
               activeOpacity={0.7}
@@ -311,8 +331,7 @@ export default function AddExpenseScreen() {
 
             <TouchableOpacity
               onPress={() => {
-                setIsAccountPickerOpen(false);
-                setIsAmountFocused(true);
+                activateInputMode('amount');
                 handleRoundOff();
               }}
               activeOpacity={0.7}
@@ -332,14 +351,16 @@ export default function AddExpenseScreen() {
         <CategorySelectorCard
           categories={expenseCategories}
           selectedId={categoryId}
+          isOpen={inputMode === 'category'}
+          onOpenChange={(open) => {
+            activateInputMode(open ? 'category' : 'none');
+          }}
           onSelect={(c) => {
-            setIsAmountFocused(false);
-            setIsAccountPickerOpen(false);
             setCategoryId(c.id);
+            activateInputMode('none');
           }}
           onOpen={() => {
-            setIsAmountFocused(false);
-            setIsAccountPickerOpen(false);
+            activateInputMode('category');
           }}
         />
 
@@ -347,16 +368,16 @@ export default function AddExpenseScreen() {
         <AccountSelectorCard
           accounts={accounts}
           selectedId={accountId}
-          isOpen={isAccountPickerOpen}
-          onOpenChange={setIsAccountPickerOpen}
+          isOpen={inputMode === 'account'}
+          onOpenChange={(open) => {
+            activateInputMode(open ? 'account' : 'none');
+          }}
           onSelect={(a) => {
-            setIsAmountFocused(false);
-            setIsAccountPickerOpen(false);
             setAccountId(a.id);
+            activateInputMode('none');
           }}
           onOpen={() => {
-            setIsAmountFocused(false);
-            setIsAccountPickerOpen(true);
+            activateInputMode('account');
           }}
         />
 
@@ -365,12 +386,10 @@ export default function AddExpenseScreen() {
           date={date}
           onChangeDate={setDate}
           onDatePress={() => {
-            setIsAmountFocused(false);
-            setIsAccountPickerOpen(false);
+            activateInputMode('date');
           }}
           onTimePress={() => {
-            setIsAmountFocused(false);
-            setIsAccountPickerOpen(false);
+            activateInputMode('time');
           }}
         />
 
@@ -378,9 +397,14 @@ export default function AddExpenseScreen() {
         <NoteCard
           value={note}
           onChangeText={setNote}
+          inputRef={noteInputRef}
           onFocus={() => {
-            setIsAmountFocused(false);
-            setIsAccountPickerOpen(false);
+            activateInputMode('note');
+          }}
+          onBlur={() => {
+            if (inputMode === 'note') {
+              activateInputMode('none');
+            }
           }}
         />
 

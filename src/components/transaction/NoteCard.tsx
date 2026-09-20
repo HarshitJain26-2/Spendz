@@ -17,6 +17,8 @@ interface NoteCardProps {
   onChangeText: (text: string) => void;
   placeholder?: string;
   onFocus?: () => void;
+  onBlur?: () => void;
+  inputRef?: React.RefObject<TextInput | null>;
   style?: ViewStyle;
 }
 
@@ -25,14 +27,17 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   onChangeText,
   placeholder = 'Dinner with team',
   onFocus,
+  onBlur,
+  inputRef: externalInputRef,
   style,
 }) => {
   const { colors } = useTheme();
-  const inputRef = useRef<TextInput>(null);
+  const internalInputRef = useRef<TextInput>(null);
+  const ref = externalInputRef || internalInputRef;
 
   const handleCardPress = () => {
     onFocus?.();
-    inputRef.current?.focus();
+    ref.current?.focus();
   };
 
   return (
@@ -62,14 +67,16 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           NOTE
         </Text>
         <TextInput
-          ref={inputRef}
+          ref={ref as any}
           value={value}
           onChangeText={onChangeText}
           onFocus={onFocus}
+          onBlur={onBlur}
           placeholder={placeholder}
           placeholderTextColor={colors.textTertiary}
           style={[styles.input, { color: colors.textPrimary }]}
           returnKeyType="done"
+          onSubmitEditing={onBlur}
         />
       </View>
 
