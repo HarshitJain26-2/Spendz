@@ -1,155 +1,330 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { TrendingUp, TrendingDown } from 'lucide-react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+} from 'react-native';
+import { ChevronDown, ChevronUp, Users, CheckCircle2 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
-import { Card } from '@/components/ui/Card';
 import { formatCurrency } from '@/utils/currency';
 import { typography } from '@/theme/typography';
-import { spacing, borderRadius } from '@/theme/spacing';
+import { spacing, borderRadius, shadows } from '@/theme/spacing';
+import type { Friend } from '@/types';
+
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+export interface FriendBalanceItem {
+  friend: Friend;
+  balance: number; // positive = owes you, negative = you owe
+}
 
 interface BalanceSummaryProps {
-  youAreOwed: number;
-  youOwe: number;
+  totalYouOwe: number;
+  totalOwedToYou: number;
+  breakdown: FriendBalanceItem[];
 }
 
 export const BalanceSummary: React.FC<BalanceSummaryProps> = ({
-  youAreOwed,
-  youOwe,
+  totalYouOwe,
+  totalOwedToYou,
+  breakdown,
 }) => {
   const { colors } = useTheme();
-  const net = youAreOwed - youOwe;
+
+  const hasDebts = totalYouOwe > 0;
+  const hasCredits = totalOwedToYou > 0;
+  const isAllSettled = !hasDebts && !hasCredits;
+
+  const [isExpanded, setIsExpanded] = useState<boolean>(!isAllSettled);
+
+  const toggleExpand = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsExpanded(!isExpanded);
+  };
+
+  // Filter items that have non-zero balance for the breakdown
+  const nonZeroItems = breakdown.filter((item) => item.balance !== 0);
+
+  // Group into who user owes and who owes user
+  const youOweList = nonZeroItems.filter((i) => i.balance < 0);
+  const owesYouList = nonZeroItems.filter((i) => i.balance > 0);
+
+  // Determine header color & badge configuration
+  const getHeaderDetails = () => {
+    if (isAllSettled) {
+      return {
+        title: 'All settled ✓',
+        subtitle: 'Everyone is settled up',
+        badgeBg: colors.incomeLight,
+        badgeText: colors.income,
+        icon: <CheckCircle2 size={18} color={colors.income} strokeWidth={2.2} />,
+      };
+    }
+
+    if (hasDebts && !hasCredits) {
+      return {
+        title: `You owe ${formatCurrency(totalYouOwe)} overall`,
+        subtitle: `${youOweList.length} ${youOweList.length === 1 ? 'person' : 'people'} to pay back`,
+        badgeBg: colors.expenseLight,
+        badgeText: colors.expense,
+        icon: <Users size={18} color={colors.expense} strokeWidth={2.2} />,
+      };
+    }
+
+    if (hasCredits && !hasDebts) {
+      return {
+        title: `You are owed ${formatCurrency(totalOwedToYou)} overall`,
+        subtitle: `${owesYouList.length} ${owesYouList.length === 1 ? 'person owes' : 'people owe'} you`,
+        badgeBg: colors.incomeLight,
+        badgeText: colors.income,
+        icon: <Users size={18} color={colors.income} strokeWidth={2.2} />,
+      };
+    }
+
+    // Both directions exist (State C)
+    return {
+      title: `You owe ${formatCurrency(totalYouOwe)}`,
+      subtitle: `You are owed ${formatCurrency(totalOwedToYou)}`,
+      badgeBg: colors.surfaceElevated,
+      badgeText: colors.textPrimary,
+      icon: <Users size={18} color={colors.textPrimary} strokeWidth={2.2} />,
+    };
+  };
+
+  const header = getHeaderDetails();
 
   return (
-    <Card style={styles.card} padding="lg">
-      <View style={styles.row}>
-        {/* You are owed */}
-        <View style={styles.column}>
-          <View style={styles.labelRow}>
-            <View style={[styles.iconWrap, { backgroundColor: colors.incomeLight }]}>
-              <TrendingUp size={14} color={colors.income} strokeWidth={2.4} />
-            </View>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>
-              You are owed
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
+        },
+        shadows.sm,
+      ]}
+    >
+      {/* Header clickable row */}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={toggleExpand}
+        style={styles.headerRow}
+      >
+        <View style={styles.headerLeft}>
+          <View style={[styles.iconCircle, { backgroundColor: header.badgeBg }]}>
+            {header.icon}
+          </View>
+          <View style={styles.headerTexts}>
+            <Text
+              style={[
+                styles.headerTitle,
+                {
+                  color:
+                    isAllSettled || (hasCredits && !hasDebts)
+                      ? colors.income
+                      : hasDebts && !hasCredits
+                      ? colors.expense
+                      : colors.textPrimary,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {header.title}
+            </Text>
+            <Text
+              style={[
+                styles.headerSubtitle,
+                {
+                  color:
+                    hasDebts && hasCredits
+                      ? colors.income
+                      : colors.textTertiary,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {header.subtitle}
             </Text>
           </View>
-          <Text style={[styles.amount, { color: colors.income }]}>
-            {formatCurrency(youAreOwed)}
-          </Text>
         </View>
 
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <View style={styles.headerRight}>
+          {isExpanded ? (
+            <ChevronUp size={20} color={colors.textSecondary} />
+          ) : (
+            <ChevronDown size={20} color={colors.textSecondary} />
+          )}
+        </View>
+      </TouchableOpacity>
 
-        {/* You owe */}
-        <View style={styles.column}>
-          <View style={styles.labelRow}>
-            <View style={[styles.iconWrap, { backgroundColor: colors.expenseLight }]}>
-              <TrendingDown size={14} color={colors.expense} strokeWidth={2.4} />
+      {/* Expanded Breakdown */}
+      {isExpanded && (
+        <View style={[styles.breakdownContainer, { borderTopColor: colors.border }]}>
+          {isAllSettled ? (
+            <View style={styles.settledNote}>
+              <Text style={[styles.settledText, { color: colors.textSecondary }]}>
+                No pending debts or credits with friends.
+              </Text>
             </View>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>
-              You owe
-            </Text>
-          </View>
-          <Text style={[styles.amount, { color: colors.expense }]}>
-            {formatCurrency(youOwe)}
-          </Text>
-        </View>
-      </View>
+          ) : (
+            <View style={styles.breakdownList}>
+              {/* You owe section */}
+              {youOweList.map((item) => (
+                <View key={`owe-${item.friend.id}`} style={styles.breakdownItem}>
+                  <View
+                    style={[
+                      styles.verticalLine,
+                      { backgroundColor: colors.expense },
+                    ]}
+                  />
+                  <Text
+                    style={[styles.breakdownText, { color: colors.textSecondary }]}
+                    numberOfLines={1}
+                  >
+                    You owe{' '}
+                    <Text
+                      style={[
+                        styles.boldFriendName,
+                        { color: colors.textPrimary },
+                      ]}
+                    >
+                      {item.friend.name}
+                    </Text>
+                  </Text>
+                  <Text style={[styles.breakdownAmount, { color: colors.expense }]}>
+                    {formatCurrency(Math.abs(item.balance))}
+                  </Text>
+                </View>
+              ))}
 
-      {/* Net Bar */}
-      <View style={[styles.netRow, { borderTopColor: colors.border }]}>
-        <Text style={[styles.netLabel, { color: colors.textTertiary }]}>
-          Net Split Balance
-        </Text>
-        <View
-          style={[
-            styles.netPill,
-            {
-              backgroundColor:
-                net > 0
-                  ? colors.incomeLight
-                  : net < 0
-                  ? colors.expenseLight
-                  : colors.pastelNeutral,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.netAmount,
-              {
-                color:
-                  net > 0
-                    ? colors.income
-                    : net < 0
-                    ? colors.expense
-                    : colors.pastelNeutralText,
-              },
-            ]}
-          >
-            {net > 0 ? `+${formatCurrency(net)}` : formatCurrency(net)}
-          </Text>
+              {/* Owes you section */}
+              {owesYouList.map((item) => (
+                <View key={`owed-${item.friend.id}`} style={styles.breakdownItem}>
+                  <View
+                    style={[
+                      styles.verticalLine,
+                      { backgroundColor: colors.income },
+                    ]}
+                  />
+                  <Text
+                    style={[styles.breakdownText, { color: colors.textSecondary }]}
+                    numberOfLines={1}
+                  >
+                    <Text
+                      style={[
+                        styles.boldFriendName,
+                        { color: colors.textPrimary },
+                      ]}
+                    >
+                      {item.friend.name}
+                    </Text>{' '}
+                    owes you
+                  </Text>
+                  <Text style={[styles.breakdownAmount, { color: colors.income }]}>
+                    {formatCurrency(item.balance)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
-      </View>
-    </Card>
+      )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.lg,
+  container: {
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
   },
-  row: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
   },
-  column: {
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     flex: 1,
-    alignItems: 'center',
-    gap: spacing.xs,
+    marginRight: spacing.sm,
   },
-  labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  iconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
+  iconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  label: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.caption,
+  headerTexts: {
+    flex: 1,
   },
-  amount: {
+  headerTitle: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 20,
+    fontSize: 15,
+    lineHeight: 20,
   },
-  divider: {
-    width: 1,
-    height: 44,
-  },
-  netRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    paddingTop: spacing.md,
-    marginTop: spacing.md,
-  },
-  netLabel: {
+  headerSubtitle: {
     fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 1,
+  },
+  headerRight: {
+    padding: spacing.xs,
+  },
+  breakdownContainer: {
+    borderTopWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  breakdownList: {
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  breakdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  verticalLine: {
+    width: 3,
+    height: 18,
+    borderRadius: 2,
+    marginRight: spacing.sm,
+  },
+  breakdownText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 13,
+    marginRight: spacing.sm,
+  },
+  boldFriendName: {
+    fontFamily: typography.fontFamily.semiBold,
+  },
+  breakdownAmount: {
+    fontFamily: typography.fontFamily.bold,
     fontSize: 13,
   },
-  netPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: borderRadius.full,
+  settledNote: {
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
   },
-  netAmount: {
-    fontFamily: typography.fontFamily.bold,
+  settledText: {
+    fontFamily: typography.fontFamily.regular,
     fontSize: 13,
   },
 });

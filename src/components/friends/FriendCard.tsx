@@ -10,7 +10,7 @@ import type { Friend } from '@/types';
 
 interface FriendCardProps {
   friend: Friend;
-  balance: number; // positive = owes you, negative = you owe
+  balance: number; // positive = owes you, negative = you owe, 0 = settled
   onPress: () => void;
 }
 
@@ -21,32 +21,26 @@ export const FriendCard: React.FC<FriendCardProps> = ({
 }) => {
   const { colors } = useTheme();
 
-  const getBalanceInfo = () => {
+  const getBalanceDisplay = () => {
     if (balance > 0) {
       return {
-        text: `${friend.name} owes you`,
-        amount: `+${formatCurrency(balance)}`,
-        badgeBg: colors.incomeLight,
-        badgeText: colors.income,
-      };
-    } else if (balance < 0) {
-      return {
-        text: `You owe ${friend.name}`,
-        amount: `-${formatCurrency(Math.abs(balance))}`,
-        badgeBg: colors.expenseLight,
-        badgeText: colors.expense,
-      };
-    } else {
-      return {
-        text: 'All settled up',
-        amount: 'Settled',
-        badgeBg: colors.pastelNeutral,
-        badgeText: colors.pastelNeutralText,
+        text: `Owes you ${formatCurrency(balance)}`,
+        textColor: colors.income,
       };
     }
+    if (balance < 0) {
+      return {
+        text: `You owe ${formatCurrency(Math.abs(balance))}`,
+        textColor: colors.expense,
+      };
+    }
+    return {
+      text: 'Settled',
+      textColor: colors.textTertiary,
+    };
   };
 
-  const info = getBalanceInfo();
+  const balanceInfo = getBalanceDisplay();
 
   return (
     <TouchableOpacity
@@ -61,7 +55,7 @@ export const FriendCard: React.FC<FriendCardProps> = ({
         shadows.sm,
       ]}
     >
-      <Avatar name={friend.name} size={44} />
+      <Avatar name={friend.name} color={friend.avatarColor} size={44} />
 
       <View style={styles.info}>
         <Text
@@ -71,21 +65,19 @@ export const FriendCard: React.FC<FriendCardProps> = ({
           {friend.name}
         </Text>
         <Text
-          style={[styles.status, { color: colors.textSecondary }]}
+          style={[
+            styles.status,
+            {
+              color: balanceInfo.textColor,
+            },
+          ]}
           numberOfLines={1}
         >
-          {info.text}
+          {balanceInfo.text}
         </Text>
       </View>
 
-      <View style={styles.right}>
-        <View style={[styles.pillBadge, { backgroundColor: info.badgeBg }]}>
-          <Text style={[styles.pillText, { color: info.badgeText }]}>
-            {info.amount}
-          </Text>
-        </View>
-        <ChevronRight size={16} color={colors.textTertiary} />
-      </View>
+      <ChevronRight size={18} color={colors.textTertiary} />
     </TouchableOpacity>
   );
 };
@@ -102,28 +94,17 @@ const styles = StyleSheet.create({
   },
   info: {
     flex: 1,
+    justifyContent: 'center',
   },
   name: {
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: 15,
-    marginBottom: 2,
+    fontSize: 16,
+    lineHeight: 20,
+    marginBottom: 3,
   },
   status: {
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 12,
-  },
-  right: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  pillBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: borderRadius.full,
-  },
-  pillText: {
-    fontSize: 12,
-    fontFamily: typography.fontFamily.semiBold,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 13,
+    lineHeight: 17,
   },
 });
