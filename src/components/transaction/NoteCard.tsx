@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   type ViewStyle,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { FileText, Mic } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
@@ -19,6 +20,7 @@ interface NoteCardProps {
   onFocus?: () => void;
   onBlur?: () => void;
   inputRef?: React.RefObject<TextInput | null>;
+  onLayout?: (event: LayoutChangeEvent) => void;
   style?: ViewStyle;
 }
 
@@ -29,6 +31,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   onFocus,
   onBlur,
   inputRef: externalInputRef,
+  onLayout,
   style,
 }) => {
   const { colors } = useTheme();
@@ -44,6 +47,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     <TouchableOpacity
       activeOpacity={0.9}
       onPress={handleCardPress}
+      onLayout={onLayout}
       style={[
         styles.card,
         {
