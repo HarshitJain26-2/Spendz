@@ -1,18 +1,16 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
-  TouchableOpacity,
   StyleSheet,
   Dimensions,
   Pressable,
+  Modal,
 } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
   withSpring,
-  runOnJS,
-  Easing,
 } from 'react-native-reanimated';
 import { useTheme } from '@/hooks/useTheme';
 import { borderRadius, spacing } from '@/theme/spacing';
@@ -44,50 +42,63 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         stiffness: 200,
       });
     } else {
-      opacity.value = withTiming(0, { duration: 200 });
-      translateY.value = withTiming(height, {
-        duration: 250,
-        easing: Easing.inOut(Easing.ease),
-      });
+      opacity.value = 0;
+      translateY.value = height;
     }
   }, [visible, height, opacity, translateY]);
 
   const overlayStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    pointerEvents: visible ? ('auto' as const) : ('none' as const),
   }));
 
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
 
+  // Never render into the layout or view hierarchy when closed
+  if (!visible) {
+    return null;
+  }
+
   return (
-    <>
-      <Animated.View style={[styles.overlay, overlayStyle]}>
-        <Pressable style={styles.overlayPress} onPress={onClose} />
-      </Animated.View>
-      <Animated.View
-        style={[
-          styles.sheet,
-          sheetStyle,
-          {
-            height,
-            backgroundColor: colors.surface,
-          },
-        ]}
-      >
-        <View style={styles.handleContainer}>
-          <View
-            style={[styles.handle, { backgroundColor: colors.border }]}
-          />
-        </View>
-        <View style={styles.content}>{children}</View>
-      </Animated.View>
-    </>
+    <Modal
+      transparent
+      visible={visible}
+      animationType="none"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={styles.modalRoot}>
+        <Animated.View style={[styles.overlay, overlayStyle]}>
+          <Pressable style={styles.overlayPress} onPress={onClose} />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.sheet,
+            sheetStyle,
+            {
+              height,
+              backgroundColor: colors.surface,
+            },
+          ]}
+        >
+          <View style={styles.handleContainer}>
+            <View
+              style={[styles.handle, { backgroundColor: colors.border }]}
+            />
+          </View>
+          <View style={styles.content}>{children}</View>
+        </Animated.View>
+      </View>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
+  modalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   overlay: {
     position: 'absolute',
     top: 0,
@@ -95,19 +106,15 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    zIndex: 100,
   },
   overlayPress: {
     flex: 1,
   },
   sheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    width: '100%',
     borderTopLeftRadius: borderRadius['2xl'],
     borderTopRightRadius: borderRadius['2xl'],
-    zIndex: 101,
+    overflow: 'hidden',
   },
   handleContainer: {
     alignItems: 'center',

@@ -19,6 +19,8 @@ interface AccountSelectorCardProps {
   accounts: Account[];
   selectedId: string;
   onSelect: (account: Account) => void;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onOpen?: () => void;
   label?: string;
   style?: ViewStyle;
@@ -28,12 +30,25 @@ export const AccountSelectorCard: React.FC<AccountSelectorCardProps> = ({
   accounts,
   selectedId,
   onSelect,
+  isOpen,
+  onOpenChange,
   onOpen,
   label = 'PAID FROM',
   style,
 }) => {
   const { colors } = useTheme();
-  const [sheetVisible, setSheetVisible] = useState(false);
+  const [internalVisible, setInternalVisible] = useState(false);
+
+  const isControlled = isOpen !== undefined;
+  const sheetVisible = isControlled ? Boolean(isOpen) : internalVisible;
+
+  const setSheetVisible = (visible: boolean) => {
+    if (isControlled) {
+      onOpenChange?.(visible);
+    } else {
+      setInternalVisible(visible);
+    }
+  };
 
   const selectedAccount = accounts.find((a) => a.id === selectedId) || accounts[0];
 

@@ -46,6 +46,7 @@ export default function AddExpenseScreen() {
 
   const [amount, setAmount] = useState('500');
   const [isAmountFocused, setIsAmountFocused] = useState(false);
+  const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(false);
   const [categoryId, setCategoryId] = useState<string | null>(
     expenseCategories[0]?.id || null
   );
@@ -53,9 +54,13 @@ export default function AddExpenseScreen() {
   const [date, setDate] = useState(getTodayISO());
   const [note, setNote] = useState('');
 
-  // Android hardware back press handler: dismiss keypad if open, else navigate back
+  // Android hardware back press handler: dismiss account picker if open, else dismiss keypad if open, else navigate back
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isAccountPickerOpen) {
+        setIsAccountPickerOpen(false);
+        return true;
+      }
       if (isAmountFocused) {
         setIsAmountFocused(false);
         return true;
@@ -63,7 +68,7 @@ export default function AddExpenseScreen() {
       return false;
     });
     return () => backHandler.remove();
-  }, [isAmountFocused]);
+  }, [isAccountPickerOpen, isAmountFocused]);
 
   // Keypad actions
   const handleKeyPress = (key: string) => {
@@ -102,6 +107,7 @@ export default function AddExpenseScreen() {
   };
 
   const handleResetDraft = () => {
+    setIsAccountPickerOpen(false);
     setIsAmountFocused(false);
     setAmount('');
     setNote('');
@@ -114,6 +120,7 @@ export default function AddExpenseScreen() {
   const isValid = parsedAmount > 0 && Boolean(accountId);
 
   const handleSubmit = () => {
+    setIsAccountPickerOpen(false);
     setIsAmountFocused(false);
     if (!isValid) return;
 
@@ -163,7 +170,10 @@ export default function AddExpenseScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
-        onScrollBeginDrag={() => setIsAmountFocused(false)}
+        onScrollBeginDrag={() => {
+          setIsAmountFocused(false);
+          setIsAccountPickerOpen(false);
+        }}
       >
         {/* 2. Sub-Header (Quick Entry + Reset Draft) */}
         <View style={styles.subHeader}>
@@ -196,7 +206,10 @@ export default function AddExpenseScreen() {
         {/* 3. Hero Amount Card */}
         <TouchableOpacity
           activeOpacity={0.9}
-          onPress={() => setIsAmountFocused(true)}
+          onPress={() => {
+            setIsAccountPickerOpen(false);
+            setIsAmountFocused(true);
+          }}
           style={[
             styles.amountCard,
             {
@@ -232,6 +245,7 @@ export default function AddExpenseScreen() {
           <View style={styles.shortcutsRow}>
             <TouchableOpacity
               onPress={() => {
+                setIsAccountPickerOpen(false);
                 setIsAmountFocused(true);
                 handleAddQuickAmount(100);
               }}
@@ -253,6 +267,7 @@ export default function AddExpenseScreen() {
 
             <TouchableOpacity
               onPress={() => {
+                setIsAccountPickerOpen(false);
                 setIsAmountFocused(true);
                 handleAddQuickAmount(500);
               }}
@@ -274,6 +289,7 @@ export default function AddExpenseScreen() {
 
             <TouchableOpacity
               onPress={() => {
+                setIsAccountPickerOpen(false);
                 setIsAmountFocused(true);
                 handleAddQuickAmount(1000);
               }}
@@ -295,6 +311,7 @@ export default function AddExpenseScreen() {
 
             <TouchableOpacity
               onPress={() => {
+                setIsAccountPickerOpen(false);
                 setIsAmountFocused(true);
                 handleRoundOff();
               }}
@@ -317,35 +334,54 @@ export default function AddExpenseScreen() {
           selectedId={categoryId}
           onSelect={(c) => {
             setIsAmountFocused(false);
+            setIsAccountPickerOpen(false);
             setCategoryId(c.id);
           }}
-          onOpen={() => setIsAmountFocused(false)}
+          onOpen={() => {
+            setIsAmountFocused(false);
+            setIsAccountPickerOpen(false);
+          }}
         />
 
         {/* 5. Paid From Account Selector Card */}
         <AccountSelectorCard
           accounts={accounts}
           selectedId={accountId}
+          isOpen={isAccountPickerOpen}
+          onOpenChange={setIsAccountPickerOpen}
           onSelect={(a) => {
             setIsAmountFocused(false);
+            setIsAccountPickerOpen(false);
             setAccountId(a.id);
           }}
-          onOpen={() => setIsAmountFocused(false)}
+          onOpen={() => {
+            setIsAmountFocused(false);
+            setIsAccountPickerOpen(true);
+          }}
         />
 
         {/* 6. Date & Time Cards */}
         <DateTimeCards
           date={date}
           onChangeDate={setDate}
-          onDatePress={() => setIsAmountFocused(false)}
-          onTimePress={() => setIsAmountFocused(false)}
+          onDatePress={() => {
+            setIsAmountFocused(false);
+            setIsAccountPickerOpen(false);
+          }}
+          onTimePress={() => {
+            setIsAmountFocused(false);
+            setIsAccountPickerOpen(false);
+          }}
         />
 
         {/* 7. Note Card */}
         <NoteCard
           value={note}
           onChangeText={setNote}
-          onFocus={() => setIsAmountFocused(false)}
+          onFocus={() => {
+            setIsAmountFocused(false);
+            setIsAccountPickerOpen(false);
+          }}
         />
 
         {/* 8. Tactile Numeric Keypad */}
