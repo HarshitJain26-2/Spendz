@@ -57,7 +57,9 @@ export default function AddSplitScreen() {
   const [paidByType, setPaidByType] = useState<'me' | 'friend'>('me');
   const [paidByFriendId, setPaidByFriendId] = useState<string | null>(null);
 
-  // Selected friends IDs (You is always implicit)
+  // Participant selection: "You" (Me) is selectable, default is true
+  const [isMeSelected, setIsMeSelected] = useState<boolean>(true);
+  // Selected friends IDs
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
   // Custom amounts per participant
   const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
@@ -66,29 +68,61 @@ export default function AddSplitScreen() {
   const [newFriendName, setNewFriendName] = useState('');
   const [isAddingFriend, setIsAddingFriend] = useState(false);
 
-  const toggleFriend = (id: string) => {
-    if (selectedFriendIds.includes(id)) {
-      setSelectedFriendIds(selectedFriendIds.filter((fId) => fId !== id));
-      // If the unselected friend was the payer, reset payer to 'me'
-      if (paidByType === 'friend' && paidByFriendId === id) {
-        setPaidByType('me');
-        setPaidByFriendId(null);
-      }
-    } else {
-      setSelectedFriendIds([...selectedFriendIds, id]);
+  // Synchronizes the payer whenever participant selection changes (Me or friends)
+  const syncPayer = (newMeSelected: boolean, newFriendIds: string[]) => {
+    // Current payer is still participating if:
+    // 1. Paid by 'me' AND Me is selected
+    // 2. Paid by 'friend' AND paidByFriendId is in newFriendIds
+    const isCurrentPayerValid =
+      (paidByType === 'me' && newMeSelected) ||
+      (paidByType === 'friend' && paidByFriendId !== null && newFriendIds.includes(paidByFriendId));
+
+    if (isCurrentPayerValid) {
+      return;
     }
+
+    // Current payer is no longer participating:
+    if (newMeSelected) {
+      setPaidByType('me');
+      setPaidByFriendId(null);
+    } else if (newFriendIds.length > 0) {
+      setPaidByType('friend');
+      setPaidByFriendId(newFriendIds[0]);
+    } else {
+      setPaidByType('friend');
+      setPaidByFriendId(null);
+    }
+  };
+
+  const toggleMe = () => {
+    const nextMeSelected = !isMeSelected;
+    setIsMeSelected(nextMeSelected);
+    syncPayer(nextMeSelected, selectedFriendIds);
+  };
+
+  const toggleFriend = (id: string) => {
+    let nextFriendIds: string[];
+    if (selectedFriendIds.includes(id)) {
+      nextFriendIds = selectedFriendIds.filter((fId) => fId !== id);
+    } else {
+      nextFriendIds = [...selectedFriendIds, id];
+    }
+    setSelectedFriendIds(nextFriendIds);
+    syncPayer(isMeSelected, nextFriendIds);
   };
 
   const handleQuickAddFriend = () => {
     if (!newFriendName.trim()) return;
     const friend = addFriend({ name: newFriendName.trim() });
-    setSelectedFriendIds([...selectedFriendIds, friend.id]);
+    const nextFriendIds = [...selectedFriendIds, friend.id];
+    setSelectedFriendIds(nextFriendIds);
     setNewFriendName('');
     setIsAddingFriend(false);
+    syncPayer(isMeSelected, nextFriendIds);
   };
 
   const totalNum = parseFloat(amount) || 0;
-  const totalParticipants = selectedFriendIds.length + 1; // +1 for "You"
+  const totalParticipants = (isMeSelected ? 1 : 0) + selectedFriendIds.length;
 
   const isFriendPaid = paidByType === 'friend' && Boolean(paidByFriendId);
   const payerFriend = isFriendPaid
@@ -118,25 +152,41 @@ export default function AddSplitScreen() {
     setCustomAmounts((prev) => ({ ...prev, [key]: cleaned }));
   };
 
-  const customTotal = Object.values(customAmounts).reduce(
-    (acc, val) => acc + (parseFloat(val) || 0),
-    0
-  );
+  const customTotal = useMemo(() => {
+    let sum = 0;
+    if (isMeSelected) {
+      sum += parseFloat(customAmounts['you']) || 0;
+    }
+    for (const fId of selectedFriendIds) {
+      sum += parseFloat(customAmounts[fId]) || 0;
+    }
+    return sum;
+  }, [isMeSelected, selectedFriendIds, customAmounts]);
 
   const handleSubmit = () => {
     if (totalNum <= 0) return;
 
-    if (selectedFriendIds.length === 0) {
+    if (totalParticipants === 0) {
+      Alert.alert('Select Participants', 'Select at least one participant.');
+      return;
+    }
+
+    if (isMeSelected && selectedFriendIds.length === 0) {
       Alert.alert('Split with whom?', 'Please select at least one friend to split with.');
       return;
     }
 
-    if (isFriendPaid && !payerFriend) {
+    if (!isMeSelected && paidByType === 'me') {
       Alert.alert('Select Payer', 'Please choose a valid participant who paid.');
       return;
     }
 
-    if (!isFriendPaid && !accountId) {
+    if (paidByType === 'friend' && !payerFriend) {
+      Alert.alert('Select Payer', 'Please choose a valid participant who paid.');
+      return;
+    }
+
+    if (paidByType === 'me' && !accountId) {
       Alert.alert('Select Account', 'Please select an account from which you paid.');
       return;
     }
@@ -164,31 +214,33 @@ export default function AddSplitScreen() {
     let participants: Array<{ friendId: string | null; name: string; amount: number }> = [];
 
     if (splitMethod === 'equal') {
-      // You
-      participants.push({
-        friendId: null,
-        name: 'You',
-        amount: equalShares[0] || 0,
-      });
-      // Friends
-      selectedFriendIds.forEach((fId, idx) => {
+      let shareIdx = 0;
+      if (isMeSelected) {
+        participants.push({
+          friendId: null,
+          name: 'You',
+          amount: equalShares[shareIdx++] || 0,
+        });
+      }
+      selectedFriendIds.forEach((fId) => {
         const friend = friends.find((f) => f.id === fId);
         if (friend) {
           participants.push({
             friendId: friend.id,
             name: friend.name,
-            amount: equalShares[idx + 1] || equalShare,
+            amount: equalShares[shareIdx++] || equalShare,
           });
         }
       });
     } else {
       // Custom
-      const youAmt = parseFloat(customAmounts['you']) || 0;
-      participants.push({
-        friendId: null,
-        name: 'You',
-        amount: youAmt,
-      });
+      if (isMeSelected) {
+        participants.push({
+          friendId: null,
+          name: 'You',
+          amount: parseFloat(customAmounts['you']) || 0,
+        });
+      }
       for (const fId of selectedFriendIds) {
         const friend = friends.find((f) => f.id === fId);
         if (friend) {
@@ -214,12 +266,22 @@ export default function AddSplitScreen() {
     router.dismiss();
   };
 
+  const hasValidParticipants =
+    (isMeSelected && selectedFriendIds.length > 0) ||
+    (!isMeSelected && selectedFriendIds.length > 0);
+
+  const hasValidPayer =
+    (paidByType === 'me' && isMeSelected && Boolean(accountId)) ||
+    (paidByType === 'friend' && Boolean(paidByFriendId) && selectedFriendIds.includes(paidByFriendId!));
+
+  const isCustomValid =
+    splitMethod === 'equal' || Math.abs(customTotal - totalNum) <= 0.5;
+
   const isValid =
     totalNum > 0 &&
-    (isFriendPaid || Boolean(accountId)) &&
-    (paidByType === 'me' || (isFriendPaid && Boolean(payerFriend))) &&
-    selectedFriendIds.length > 0 &&
-    (splitMethod === 'equal' || Math.abs(customTotal - totalNum) <= 0.5);
+    hasValidParticipants &&
+    hasValidPayer &&
+    isCustomValid;
 
   return (
     <SafeAreaView
@@ -323,13 +385,19 @@ export default function AddSplitScreen() {
 
           {/* Friends List chips */}
           <View style={styles.friendsContainer}>
-            {/* You (Always selected) */}
-            <View
+            {/* You (Me) */}
+            <TouchableOpacity
+              onPress={toggleMe}
+              activeOpacity={0.7}
               style={[
                 styles.friendChip,
                 {
-                  backgroundColor: colors.accentLight,
-                  borderColor: colors.accent,
+                  backgroundColor: isMeSelected
+                    ? colors.accentLight
+                    : colors.surface,
+                  borderColor: isMeSelected
+                    ? colors.accent
+                    : colors.border,
                 },
               ]}
             >
@@ -337,13 +405,20 @@ export default function AddSplitScreen() {
               <Text
                 style={[
                   styles.friendChipName,
-                  { color: colors.accent, fontWeight: '700' },
+                  {
+                    color: isMeSelected
+                      ? colors.accent
+                      : colors.textPrimary,
+                    fontWeight: isMeSelected ? '600' : '400',
+                  },
                 ]}
               >
                 You
               </Text>
-              <Check size={14} color={colors.accent} strokeWidth={3} />
-            </View>
+              {isMeSelected && (
+                <Check size={14} color={colors.accent} strokeWidth={3} />
+              )}
+            </TouchableOpacity>
 
             {friends.map((f) => {
               const isSelected = selectedFriendIds.includes(f.id);
@@ -401,31 +476,33 @@ export default function AddSplitScreen() {
               },
             ]}
           >
-            {/* Option: Me */}
-            <TouchableOpacity
-              onPress={() => {
-                setPaidByType('me');
-                setPaidByFriendId(null);
-              }}
-              activeOpacity={0.7}
-              style={[
-                styles.payerRow,
-                {
-                  borderBottomColor: colors.border,
-                  borderBottomWidth: selectedFriendIds.length > 0 ? 1 : 0,
-                },
-              ]}
-            >
-              <View style={styles.payerLeft}>
-                <Avatar name="You" size={32} />
-                <Text style={[styles.payerName, { color: colors.textPrimary }]}>
-                  Me
-                </Text>
-              </View>
-              {paidByType === 'me' && (
-                <Check size={18} color={colors.accent} strokeWidth={2.5} />
-              )}
-            </TouchableOpacity>
+            {/* Option: Me (Only shown when Me is participating) */}
+            {isMeSelected && (
+              <TouchableOpacity
+                onPress={() => {
+                  setPaidByType('me');
+                  setPaidByFriendId(null);
+                }}
+                activeOpacity={0.7}
+                style={[
+                  styles.payerRow,
+                  {
+                    borderBottomColor: colors.border,
+                    borderBottomWidth: selectedFriendIds.length > 0 ? 1 : 0,
+                  },
+                ]}
+              >
+                <View style={styles.payerLeft}>
+                  <Avatar name="You" size={32} />
+                  <Text style={[styles.payerName, { color: colors.textPrimary }]}>
+                    Me
+                  </Text>
+                </View>
+                {paidByType === 'me' && (
+                  <Check size={18} color={colors.accent} strokeWidth={2.5} />
+                )}
+              </TouchableOpacity>
+            )}
 
             {/* Selected Friends Options */}
             {selectedFriendIds.map((fId, idx) => {
@@ -605,7 +682,9 @@ export default function AddSplitScreen() {
                   ]}
                 >
                   {isFriendPaid
-                    ? `${payerFriend?.name || 'Friend'} paid ${formatCurrency(totalNum)}. You will owe ${payerFriend?.name || 'them'} ${formatCurrency(equalShare)}.`
+                    ? isMeSelected
+                      ? `${payerFriend?.name || 'Friend'} paid ${formatCurrency(totalNum)}. You will owe ${payerFriend?.name || 'them'} ${formatCurrency(equalShare)}.`
+                      : `${payerFriend?.name || 'Friend'} paid ${formatCurrency(totalNum)}. You are not participating in this split.`
                     : `You will be owed ${formatCurrency(equalShare * selectedFriendIds.length)} in total.`}
                 </Text>
               )}
@@ -621,29 +700,31 @@ export default function AddSplitScreen() {
               ]}
             >
               {/* You input */}
-              <View style={styles.customRow}>
-                <Text style={[styles.customName, { color: colors.textPrimary }]}>
-                  You
-                </Text>
-                <View style={styles.customInputWrap}>
-                  <Text style={{ color: colors.textSecondary, marginRight: 4 }}>
-                    ₹
+              {isMeSelected && (
+                <View style={styles.customRow}>
+                  <Text style={[styles.customName, { color: colors.textPrimary }]}>
+                    You
                   </Text>
-                  <TextInput
-                    placeholder="0"
-                    placeholderTextColor={colors.textTertiary}
-                    keyboardType="decimal-pad"
-                    cursorColor={colors.accent}
-                    selectionColor={colors.accent}
-                    value={customAmounts['you'] || ''}
-                    onChangeText={(val) => handleCustomAmountChange('you', val)}
-                    style={[
-                      styles.customInput,
-                      { color: colors.textPrimary, borderColor: colors.border },
-                    ]}
-                  />
+                  <View style={styles.customInputWrap}>
+                    <Text style={{ color: colors.textSecondary, marginRight: 4 }}>
+                      ₹
+                    </Text>
+                    <TextInput
+                      placeholder="0"
+                      placeholderTextColor={colors.textTertiary}
+                      keyboardType="decimal-pad"
+                      cursorColor={colors.accent}
+                      selectionColor={colors.accent}
+                      value={customAmounts['you'] || ''}
+                      onChangeText={(val) => handleCustomAmountChange('you', val)}
+                      style={[
+                        styles.customInput,
+                        { color: colors.textPrimary, borderColor: colors.border },
+                      ]}
+                    />
+                  </View>
                 </View>
-              </View>
+              )}
 
               {/* Friends input */}
               {selectedFriendIds.map((fId) => {
@@ -713,8 +794,10 @@ export default function AddSplitScreen() {
                   ]}
                 >
                   {isFriendPaid
-                    ? `${payerFriend?.name || 'Friend'} paid ${formatCurrency(totalNum)}. You will owe ${payerFriend?.name || 'them'} ${formatCurrency(parseFloat(customAmounts['you']) || 0)}.`
-                    : `You will be owed ${formatCurrency(totalNum - (parseFloat(customAmounts['you']) || 0))} in total.`}
+                    ? isMeSelected
+                      ? `${payerFriend?.name || 'Friend'} paid ${formatCurrency(totalNum)}. You will owe ${payerFriend?.name || 'them'} ${formatCurrency(parseFloat(customAmounts['you']) || 0)}.`
+                      : `${payerFriend?.name || 'Friend'} paid ${formatCurrency(totalNum)}. You are not participating in this split.`
+                    : `You will be owed ${formatCurrency(totalNum - (isMeSelected ? (parseFloat(customAmounts['you']) || 0) : 0))} in total.`}
                 </Text>
               )}
             </View>

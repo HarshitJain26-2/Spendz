@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,8 +25,9 @@ import { useCategoryStore } from '@/store/categoryStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useSplitStore } from '@/store/splitStore';
 import { useFriendStore } from '@/store/friendStore';
-import type { PaidByType } from '@/types';
-import { getTodayISO } from '@/utils/date';
+import type { PaidByType, SplitParticipant } from '@/types';
+import { getTodayISO, generateId } from '@/utils/date';
+import { calculateEqualSplit } from '@/utils/calculations';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius, shadows } from '@/theme/spacing';
 
@@ -57,6 +59,8 @@ export default function EditTransactionScreen() {
   const [note, setNote] = useState('');
   const [paidByType, setPaidByType] = useState<PaidByType>('me');
   const [paidByFriendId, setPaidByFriendId] = useState<string | null>(null);
+  const [isMeSelected, setIsMeSelected] = useState(true);
+  const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (transaction) {
@@ -71,8 +75,83 @@ export default function EditTransactionScreen() {
     if (splitExpense) {
       setPaidByType(splitExpense.paidByType || 'me');
       setPaidByFriendId(splitExpense.paidByFriendId || null);
+
+      const hasMe = splitExpense.participants
+        ? splitExpense.participants.some((p) => p.friendId === null)
+        : true;
+      setIsMeSelected(hasMe);
+
+      const friendIds = splitExpense.participants
+        ? splitExpense.participants
+            .filter((p) => p.friendId !== null)
+            .map((p) => p.friendId as string)
+        : [];
+      setSelectedFriendIds(friendIds);
     }
   }, [splitExpense]);
+
+  // Combine friend store with any participants previously on this split
+  const allAvailableFriends = useMemo(() => {
+    const list = [...friends];
+    if (splitExpense?.participants) {
+      for (const p of splitExpense.participants) {
+        if (p.friendId && !list.some((f) => f.id === p.friendId)) {
+          list.push({
+            id: p.friendId,
+            name: p.name,
+            phone: null,
+            avatarColor: '#2A9D8F',
+            createdAt: '',
+          });
+        }
+      }
+    }
+    return list;
+  }, [friends, splitExpense]);
+
+  const syncPayer = (newMeSelected: boolean, newFriendIds: string[]) => {
+    if (paidByType === 'me') {
+      if (newMeSelected) return;
+      if (newFriendIds.length > 0) {
+        setPaidByType('friend');
+        setPaidByFriendId(newFriendIds[0]);
+      } else {
+        setPaidByType('me');
+        setPaidByFriendId(null);
+      }
+    } else if (paidByType === 'friend') {
+      if (paidByFriendId && newFriendIds.includes(paidByFriendId)) {
+        return;
+      }
+      if (newMeSelected) {
+        setPaidByType('me');
+        setPaidByFriendId(null);
+      } else if (newFriendIds.length > 0) {
+        setPaidByType('friend');
+        setPaidByFriendId(newFriendIds[0]);
+      } else {
+        setPaidByType('friend');
+        setPaidByFriendId(null);
+      }
+    }
+  };
+
+  const toggleMe = () => {
+    const next = !isMeSelected;
+    setIsMeSelected(next);
+    syncPayer(next, selectedFriendIds);
+  };
+
+  const toggleFriend = (friendId: string) => {
+    let next: string[];
+    if (selectedFriendIds.includes(friendId)) {
+      next = selectedFriendIds.filter((id) => id !== friendId);
+    } else {
+      next = [...selectedFriendIds, friendId];
+    }
+    setSelectedFriendIds(next);
+    syncPayer(isMeSelected, next);
+  };
 
   if (!transaction) {
     return (
@@ -94,72 +173,124 @@ export default function EditTransactionScreen() {
   }
 
   const isFriendPaid = Boolean(splitExpense && paidByType === 'friend' && paidByFriendId);
-  const payerFriend = friends.find((f) => f.id === paidByFriendId);
-
-  // Participants who are friends in this split
-  const friendParticipants = useMemo(() => {
-    if (!splitExpense?.participants) return [];
-    return splitExpense.participants
-      .filter((p) => p.friendId !== null)
-      .map((p) => {
-        const found = friends.find((f) => f.id === p.friendId);
-        return {
-          id: p.friendId as string,
-          name: found?.name || p.name,
-        };
-      });
-  }, [splitExpense, friends]);
+  const payerFriend = allAvailableFriends.find((f) => f.id === paidByFriendId);
 
   const filteredCategories = categories.filter(
     (c) => c.type === (transaction.type === 'income' ? 'income' : 'expense')
   );
 
+  const hasValidParticipants =
+    (isMeSelected && selectedFriendIds.length > 0) ||
+    (!isMeSelected && selectedFriendIds.length > 0);
+
+  const isSplitExpenseValid = !splitExpense || (
+    hasValidParticipants &&
+    ((paidByType === 'me' && isMeSelected && Boolean(accountId)) ||
+     (paidByType === 'friend' && Boolean(paidByFriendId) && selectedFriendIds.includes(paidByFriendId!)))
+  );
+
+  const isValid =
+    parseFloat(amount) > 0 &&
+    (splitExpense ? isSplitExpenseValid : (transaction.type === 'transfer' || Boolean(accountId)));
+
   const handleSave = () => {
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) return;
-    if (!isFriendPaid && !accountId) return;
 
-    const wasPaidByFriend = splitExpense?.paidByType === 'friend';
+    if (splitExpense) {
+      if (!hasValidParticipants) {
+        Alert.alert('Select Participants', 'Please select at least one friend to split with.');
+        return;
+      }
+      if (paidByType === 'me' && (!isMeSelected || !accountId)) {
+        Alert.alert('Invalid Selection', 'Please select an account for payment.');
+        return;
+      }
+      if (paidByType === 'friend' && (!paidByFriendId || !selectedFriendIds.includes(paidByFriendId))) {
+        Alert.alert('Invalid Selection', 'Please choose a participating friend as payer.');
+        return;
+      }
+    } else {
+      if (transaction.type !== 'transfer' && !accountId) return;
+    }
 
     // 1. Update split expense if linked
     if (splitExpense) {
-      const isPayerChanged =
-        splitExpense.paidByType !== paidByType ||
-        splitExpense.paidByFriendId !== (isFriendPaid ? paidByFriendId : null);
+      const now = getTodayISO();
+      let updatedParticipants: SplitParticipant[] = [];
 
-      let updatedParticipants = splitExpense.participants;
+      if (splitExpense.splitMethod === 'equal') {
+        const totalCount = (isMeSelected ? 1 : 0) + selectedFriendIds.length;
+        const equalShares = calculateEqualSplit(parsedAmount, totalCount);
+        let shareIdx = 0;
 
-      if (updatedParticipants && updatedParticipants.length > 0) {
-        const isAmountChanged = parsedAmount !== splitExpense.totalAmount;
-        if (isAmountChanged && splitExpense.splitMethod === 'equal') {
-          const count = updatedParticipants.length;
-          const equalShare = Math.round((parsedAmount / count) * 100) / 100;
-          updatedParticipants = updatedParticipants.map((p, idx) => ({
-            ...p,
-            amount: idx === 0 ? parsedAmount - equalShare * (count - 1) : equalShare,
-          }));
+        if (isMeSelected) {
+          const isPaid = paidByType === 'me';
+          const prevMe = splitExpense.participants?.find((p) => p.friendId === null);
+          updatedParticipants.push({
+            id: prevMe?.id || generateId(),
+            splitExpenseId: splitExpense.id,
+            friendId: null,
+            name: 'You',
+            amount: equalShares[shareIdx++] || 0,
+            isPaid,
+            settledAt: isPaid ? now : null,
+          });
         }
-      }
 
-      if (isPayerChanged && updatedParticipants) {
-        const now = getTodayISO();
-        updatedParticipants = updatedParticipants.map((p) => {
-          if (paidByType === 'me') {
-            const isUser = p.friendId === null;
-            return {
-              ...p,
-              isPaid: isUser,
-              settledAt: isUser ? now : null,
-            };
-          } else {
-            const isPayer = p.friendId === paidByFriendId;
-            return {
-              ...p,
-              isPaid: isPayer,
-              settledAt: isPayer ? now : null,
-            };
-          }
-        });
+        for (const fId of selectedFriendIds) {
+          const friend = allAvailableFriends.find((f) => f.id === fId);
+          const prevPart = splitExpense.participants?.find((p) => p.friendId === fId);
+          const isPaid = paidByType === 'friend' && paidByFriendId === fId;
+          updatedParticipants.push({
+            id: prevPart?.id || generateId(),
+            splitExpenseId: splitExpense.id,
+            friendId: fId,
+            name: friend?.name || prevPart?.name || 'Friend',
+            amount: equalShares[shareIdx++] || 0,
+            isPaid,
+            settledAt: isPaid ? now : null,
+          });
+        }
+      } else {
+        // Custom split method
+        if (isMeSelected) {
+          const prevMe = splitExpense.participants?.find((p) => p.friendId === null);
+          const isPaid = paidByType === 'me';
+          updatedParticipants.push({
+            id: prevMe?.id || generateId(),
+            splitExpenseId: splitExpense.id,
+            friendId: null,
+            name: 'You',
+            amount: prevMe?.amount || 0,
+            isPaid,
+            settledAt: isPaid ? now : null,
+          });
+        }
+
+        for (const fId of selectedFriendIds) {
+          const friend = allAvailableFriends.find((f) => f.id === fId);
+          const prevPart = splitExpense.participants?.find((p) => p.friendId === fId);
+          const isPaid = paidByType === 'friend' && paidByFriendId === fId;
+          updatedParticipants.push({
+            id: prevPart?.id || generateId(),
+            splitExpenseId: splitExpense.id,
+            friendId: fId,
+            name: friend?.name || prevPart?.name || 'Friend',
+            amount: prevPart?.amount || 0,
+            isPaid,
+            settledAt: isPaid ? now : null,
+          });
+        }
+
+        const customSum = updatedParticipants.reduce((sum, p) => sum + p.amount, 0);
+        if (Math.abs(customSum - parsedAmount) > 0.5) {
+          Alert.alert(
+            'Amounts Mismatch',
+            `Sum of custom shares does not equal total amount.`
+          );
+          return;
+        }
       }
 
       updateSplitExpense(
@@ -190,8 +321,6 @@ export default function EditTransactionScreen() {
 
     router.back();
   };
-
-  const isValid = parseFloat(amount) > 0 && (isFriendPaid || Boolean(accountId));
 
   return (
     <SafeAreaView
@@ -224,9 +353,91 @@ export default function EditTransactionScreen() {
           {/* Amount */}
           <AmountInput value={amount} onChangeText={setAmount} />
 
-          {/* Paid By Selector (Only for Split Expenses) */}
+          {/* Participants & Paid By Selector (Only for Split Expenses) */}
           {splitExpense && (
             <>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+                  PARTICIPANTS
+                </Text>
+              </View>
+              <View style={styles.friendsContainer}>
+                {/* You chip */}
+                <TouchableOpacity
+                  onPress={toggleMe}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.friendChip,
+                    {
+                      backgroundColor: isMeSelected
+                        ? colors.accentLight
+                        : colors.surface,
+                      borderColor: isMeSelected
+                        ? colors.accent
+                        : colors.border,
+                    },
+                  ]}
+                >
+                  <Avatar name="You" size={28} />
+                  <Text
+                    style={[
+                      styles.friendChipName,
+                      {
+                        color: isMeSelected
+                          ? colors.accent
+                          : colors.textPrimary,
+                        fontWeight: isMeSelected ? '600' : '400',
+                      },
+                    ]}
+                  >
+                    You
+                  </Text>
+                  {isMeSelected && (
+                    <Check size={14} color={colors.accent} strokeWidth={3} />
+                  )}
+                </TouchableOpacity>
+
+                {allAvailableFriends.map((f) => {
+                  const isSelected = selectedFriendIds.includes(f.id);
+                  return (
+                    <TouchableOpacity
+                      key={f.id}
+                      onPress={() => toggleFriend(f.id)}
+                      activeOpacity={0.7}
+                      style={[
+                        styles.friendChip,
+                        {
+                          backgroundColor: isSelected
+                            ? colors.accentLight
+                            : colors.surface,
+                          borderColor: isSelected
+                            ? colors.accent
+                            : colors.border,
+                        },
+                      ]}
+                    >
+                      <Avatar name={f.name} size={28} />
+                      <Text
+                        style={[
+                          styles.friendChipName,
+                          {
+                            color: isSelected
+                              ? colors.accent
+                              : colors.textPrimary,
+                            fontWeight: isSelected ? '600' : '400',
+                          },
+                        ]}
+                      >
+                        {f.name}
+                      </Text>
+                      {isSelected && (
+                        <Check size={14} color={colors.accent} strokeWidth={3} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
               <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
                   PAID BY
@@ -236,37 +447,41 @@ export default function EditTransactionScreen() {
                 padding="none"
                 style={styles.payerContainer}
               >
-                {/* Option: Me */}
-                <TouchableOpacity
-                  onPress={() => {
-                    setPaidByType('me');
-                    setPaidByFriendId(null);
-                  }}
-                  activeOpacity={0.7}
-                  style={[
-                    styles.payerRow,
-                    {
-                      borderBottomColor: colors.border,
-                      borderBottomWidth: friendParticipants.length > 0 ? 1 : 0,
-                    },
-                  ]}
-                >
-                  <View style={styles.payerLeft}>
-                    <Avatar name="You" size={32} />
-                    <Text style={[styles.payerName, { color: colors.textPrimary }]}>
-                      Me
-                    </Text>
-                  </View>
-                  {paidByType === 'me' && (
-                    <Check size={18} color={colors.accent} strokeWidth={2.5} />
-                  )}
-                </TouchableOpacity>
+                {/* Option: Me (Only when Me is selected) */}
+                {isMeSelected && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setPaidByType('me');
+                      setPaidByFriendId(null);
+                    }}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.payerRow,
+                      {
+                        borderBottomColor: colors.border,
+                        borderBottomWidth: selectedFriendIds.length > 0 ? 1 : 0,
+                      },
+                    ]}
+                  >
+                    <View style={styles.payerLeft}>
+                      <Avatar name="You" size={32} />
+                      <Text style={[styles.payerName, { color: colors.textPrimary }]}>
+                        Me
+                      </Text>
+                    </View>
+                    {paidByType === 'me' && (
+                      <Check size={18} color={colors.accent} strokeWidth={2.5} />
+                    )}
+                  </TouchableOpacity>
+                )}
 
-                {/* Split Participants Friends */}
-                {friendParticipants.map((friend, idx) => {
+                {/* Selected Friends */}
+                {selectedFriendIds.map((fId, idx) => {
+                  const friend = allAvailableFriends.find((f) => f.id === fId);
+                  if (!friend) return null;
                   const isSelectedPayer =
                     paidByType === 'friend' && paidByFriendId === friend.id;
-                  const isLast = idx === friendParticipants.length - 1;
+                  const isLast = idx === selectedFriendIds.length - 1;
 
                   return (
                     <TouchableOpacity
@@ -448,5 +663,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: typography.fontFamily.regular,
     lineHeight: 18,
+  },
+  friendsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
+    marginVertical: spacing.sm,
+  },
+  friendChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
+  },
+  friendChipName: {
+    fontSize: 14,
   },
 });
