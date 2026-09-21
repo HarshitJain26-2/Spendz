@@ -347,11 +347,11 @@ export const repository: DatabaseRepository = {
       .run();
 
     if (participants) {
+      db.delete(schema.splitParticipants)
+        .where(eq(schema.splitParticipants.splitExpenseId, id))
+        .run();
       for (const p of participants) {
-        db.update(schema.splitParticipants)
-          .set({ isPaid: p.isPaid, settledAt: p.settledAt, amount: p.amount })
-          .where(eq(schema.splitParticipants.id, p.id))
-          .run();
+        db.insert(schema.splitParticipants).values(p).run();
       }
     }
   },

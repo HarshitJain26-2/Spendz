@@ -264,11 +264,9 @@ export const repository: DatabaseRepository = {
         STORAGE_KEYS.PARTICIPANTS,
         []
       );
-      const participantMap = new Map(participants.map((p) => [p.id, p]));
-      const updatedParticipants = allParticipants.map((p) =>
-        participantMap.has(p.id) ? { ...p, ...participantMap.get(p.id)! } : p
-      );
-      setStorage(STORAGE_KEYS.PARTICIPANTS, updatedParticipants);
+      const filtered = allParticipants.filter((p) => p.splitExpenseId !== id);
+      filtered.push(...participants);
+      setStorage(STORAGE_KEYS.PARTICIPANTS, filtered);
     }
   },
 
