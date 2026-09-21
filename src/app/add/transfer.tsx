@@ -15,14 +15,12 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { ArrowLeft, ArrowDown, ArrowLeftRight, RotateCcw } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { Avatar } from '@/components/ui/Avatar';
 import { AccountSelectorCard } from '@/components/transaction/AccountSelectorCard';
 import { DateTimeCards } from '@/components/transaction/DateTimeCards';
 import { NoteCard } from '@/components/transaction/NoteCard';
-import { NumericKeypad } from '@/components/ui/NumericKeypad';
 import { numberToWords } from '@/utils/numberToWords';
 import { formatCurrency } from '@/utils/currency';
 import { useTransactionStore } from '@/store/transactionStore';
@@ -51,6 +49,10 @@ export default function AddTransferScreen() {
   const accounts = useAccountStore((s) => s.accounts);
 
   const [inputMode, setInputMode] = useState<InputMode>('none');
+  const inputModeRef = useRef<InputMode>('none');
+  inputModeRef.current = inputMode;
+
+  const amountInputRef = useRef<TextInput>(null);
   const noteInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const [noteLayout, setNoteLayout] = useState({ y: 0, height: 0 });
@@ -74,10 +76,15 @@ export default function AddTransferScreen() {
     scrollViewRef.current.scrollTo({ y: targetY, animated: true });
   }, [noteLayout.y, noteLayout.height, scrollViewHeight]);
 
-  // Strict single-input-mode activator: blurs note and dismisses native keyboard when switching away from 'note'
+  // Strict single-input-mode activator: blurs inputs not matching active mode
   const activateInputMode = useCallback((mode: InputMode) => {
     if (mode !== 'note') {
       noteInputRef.current?.blur();
+    }
+    if (mode !== 'amount') {
+      amountInputRef.current?.blur();
+    }
+    if (mode !== 'note' && mode !== 'amount') {
       Keyboard.dismiss();
     }
     setInputMode(mode);
@@ -86,16 +93,20 @@ export default function AddTransferScreen() {
   // Listen to native keyboard appearance and dismissal
   useEffect(() => {
     const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
-      setInputMode((current) => (current === 'note' ? 'none' : current));
       setKeyboardHeight(0);
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     });
 
     const showSubscription = Keyboard.addListener('keyboardDidShow', (e) => {
       setKeyboardHeight(e.endCoordinates.height);
-      requestAnimationFrame(() => {
-        scrollToNote();
-      });
+      if (inputModeRef.current === 'note') {
+        requestAnimationFrame(() => {
+          scrollToNote();
+        });
+      } else if (inputModeRef.current === 'amount') {
+        requestAnimationFrame(() => {
+          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+        });
+      }
     });
 
     return () => {
@@ -128,32 +139,57 @@ export default function AddTransferScreen() {
 
   const isAmountFocused = inputMode === 'amount';
 
-  const handleKeyPress = (key: string) => {
-    if (key === '.') {
-      if (amount.includes('.')) return;
-      setAmount((prev) => (prev ? `${prev}.` : '0.'));
+  const handleAmountChange = (text: string) => {
+    if (text === '') {
+      setAmount('');
       return;
     }
 
-    if (amount === '0') {
-      setAmount(key);
-      return;
+    // Replace comma with dot
+    let cleaned = text.replace(/,/g, '.');
+    // Keep only numbers and dot
+    cleaned = cleaned.replace(/[^0-9.]/g, '');
+
+    // Allow at most one dot
+    const firstDotIndex = cleaned.indexOf('.');
+    if (firstDotIndex !== -1) {
+      cleaned =
+        cleaned.slice(0, firstDotIndex + 1) +
+        cleaned.slice(firstDotIndex + 1).replace(/\./g, '');
     }
 
-    const parts = amount.split('.');
-    if (parts[1] && parts[1].length >= 2) return;
-    if (amount.length >= 8) return;
+    // Strip leading zeros unless followed by a dot (e.g. "05" -> "5", but "0." remains "0.")
+    if (cleaned.length > 1 && cleaned.startsWith('0') && cleaned[1] !== '.') {
+      cleaned = cleaned.replace(/^0+/, '');
+      if (cleaned === '') cleaned = '0';
+    }
 
-    setAmount((prev) => `${prev}${key}`);
-  };
+    if (cleaned === '.') {
+      cleaned = '0.';
+    }
 
-  const handleDelete = () => {
-    setAmount((prev) => (prev.length > 0 ? prev.slice(0, -1) : ''));
+    // Split and limit
+    const parts = cleaned.split('.');
+    if (parts[0].length > 8) {
+      parts[0] = parts[0].slice(0, 8);
+    }
+    if (parts[1] && parts[1].length > 2) {
+      parts[1] = parts[1].slice(0, 2);
+    }
+
+    cleaned = parts.length > 1 ? `${parts[0]}.${parts[1]}` : parts[0];
+    setAmount(cleaned);
   };
 
   const handleAddQuickAmount = (val: number) => {
     const current = parseFloat(amount) || 0;
     setAmount(Math.round(current + val).toString());
+  };
+
+  const handleSwapAccounts = () => {
+    const temp = fromAccountId;
+    setFromAccountId(toAccountId);
+    setToAccountId(temp);
   };
 
   const handleResetDraft = () => {
@@ -174,15 +210,12 @@ export default function AddTransferScreen() {
 
   const handleSubmit = () => {
     activateInputMode('none');
+    if (!isValid) return;
+
     if (fromAccountId === toAccountId) {
-      Alert.alert(
-        'Invalid Transfer',
-        'Source and destination accounts must be different.'
-      );
+      Alert.alert('Invalid Transfer', 'Source and destination accounts must be different');
       return;
     }
-
-    if (!isValid) return;
 
     addTransaction({
       type: 'transfer',
@@ -190,7 +223,7 @@ export default function AddTransferScreen() {
       categoryId: null,
       accountId: fromAccountId,
       toAccountId: toAccountId,
-      note: note.trim() || 'Account Transfer',
+      note: note.trim() || 'Transfer',
       date,
     });
 
@@ -253,14 +286,15 @@ export default function AddTransferScreen() {
             <View
               style={[
                 styles.quickEntryPill,
-                { backgroundColor: colors.transferLight },
+                { backgroundColor: colors.surfaceElevated },
               ]}
             >
               <Text
-                style={[styles.quickEntryText, { color: colors.transfer }]}
+                style={[styles.quickEntryText, { color: colors.textSecondary }]}
               >
-                TRANSFER • BETWEEN ACCOUNTS
+                QUICK ENTRY
               </Text>
+              <View style={[styles.mintDot, { backgroundColor: colors.transfer }]} />
             </View>
 
             <TouchableOpacity
@@ -279,7 +313,7 @@ export default function AddTransferScreen() {
           <TouchableOpacity
             activeOpacity={0.9}
             onPress={() => {
-              activateInputMode('amount');
+              amountInputRef.current?.focus();
             }}
             style={[
               styles.amountCard,
@@ -298,12 +332,30 @@ export default function AddTransferScreen() {
               <Text style={[styles.amountCurrency, { color: colors.transfer }]}>
                 ₹
               </Text>
-              <Text style={[styles.amountValue, { color: colors.textPrimary }]}>
-                {amount || '0'}
-              </Text>
-              {isAmountFocused && (
-                <View style={[styles.cursor, { backgroundColor: colors.transfer }]} />
-              )}
+              <TextInput
+                ref={amountInputRef}
+                value={amount}
+                onChangeText={handleAmountChange}
+                onFocus={() => {
+                  activateInputMode('amount');
+                }}
+                onBlur={() => {
+                  if (amount === '' || amount === '.') {
+                    setAmount('0');
+                  }
+                }}
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                cursorColor={colors.transfer}
+                selectionColor={colors.transfer}
+                placeholder="0"
+                placeholderTextColor={colors.textTertiary}
+                style={[
+                  styles.amountInput,
+                  { color: colors.textPrimary },
+                  Platform.OS === 'web' && ({ width: `${Math.max(1, (amount || '0').length + 0.5)}ch` } as any),
+                ]}
+              />
             </View>
 
             <Text style={[styles.inWordsText, { color: colors.textTertiary }]}>
@@ -314,7 +366,6 @@ export default function AddTransferScreen() {
             <View style={styles.shortcutsRow}>
               <TouchableOpacity
                 onPress={() => {
-                  activateInputMode('amount');
                   handleAddQuickAmount(500);
                 }}
                 activeOpacity={0.7}
@@ -335,7 +386,6 @@ export default function AddTransferScreen() {
 
               <TouchableOpacity
                 onPress={() => {
-                  activateInputMode('amount');
                   handleAddQuickAmount(1000);
                 }}
                 activeOpacity={0.7}
@@ -356,7 +406,6 @@ export default function AddTransferScreen() {
 
               <TouchableOpacity
                 onPress={() => {
-                  activateInputMode('amount');
                   handleAddQuickAmount(2000);
                 }}
                 activeOpacity={0.7}
@@ -377,7 +426,6 @@ export default function AddTransferScreen() {
 
               <TouchableOpacity
                 onPress={() => {
-                  activateInputMode('amount');
                   handleAddQuickAmount(5000);
                 }}
                 activeOpacity={0.7}
@@ -398,58 +446,59 @@ export default function AddTransferScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* 4. Directional Accounts: FROM Account */}
-          <AccountSelectorCard
-            accounts={accounts}
-            selectedId={fromAccountId}
-            isOpen={inputMode === 'fromAccount'}
-            onOpenChange={(open) => {
-              activateInputMode(open ? 'fromAccount' : 'none');
-            }}
-            label="TRANSFER FROM"
-            onSelect={(a) => {
-              setFromAccountId(a.id);
-              activateInputMode('none');
-            }}
-            onOpen={() => {
-              activateInputMode('fromAccount');
-            }}
-          />
+          {/* 4. Transfer Route Cards (From -> Swap Button -> To) */}
+          <View style={styles.routeContainer}>
+            <AccountSelectorCard
+              accounts={accounts}
+              selectedId={fromAccountId}
+              isOpen={inputMode === 'fromAccount'}
+              onOpenChange={(open) => {
+                activateInputMode(open ? 'fromAccount' : 'none');
+              }}
+              label="TRANSFER FROM"
+              onSelect={(a) => {
+                setFromAccountId(a.id);
+                activateInputMode('none');
+              }}
+              onOpen={() => {
+                activateInputMode('fromAccount');
+              }}
+            />
 
-          {/* Down Arrow Indicator */}
-          <View style={styles.directionIndicator}>
-            <View
+            <TouchableOpacity
+              onPress={handleSwapAccounts}
+              activeOpacity={0.8}
               style={[
-                styles.directionCircle,
+                styles.swapButton,
                 {
                   backgroundColor: colors.surfaceElevated,
                   borderColor: colors.border,
                 },
+                shadows.sm,
               ]}
             >
-              <ArrowDown size={18} color={colors.transfer} strokeWidth={2.4} />
-            </View>
+              <ArrowDown size={18} color={colors.transfer} strokeWidth={2.2} />
+            </TouchableOpacity>
+
+            <AccountSelectorCard
+              accounts={accounts}
+              selectedId={toAccountId}
+              isOpen={inputMode === 'toAccount'}
+              onOpenChange={(open) => {
+                activateInputMode(open ? 'toAccount' : 'none');
+              }}
+              label="TRANSFER TO"
+              onSelect={(a) => {
+                setToAccountId(a.id);
+                activateInputMode('none');
+              }}
+              onOpen={() => {
+                activateInputMode('toAccount');
+              }}
+            />
           </View>
 
-          {/* 5. Directional Accounts: TO Account */}
-          <AccountSelectorCard
-            accounts={accounts}
-            selectedId={toAccountId}
-            isOpen={inputMode === 'toAccount'}
-            onOpenChange={(open) => {
-              activateInputMode(open ? 'toAccount' : 'none');
-            }}
-            label="TRANSFER TO"
-            onSelect={(a) => {
-              setToAccountId(a.id);
-              activateInputMode('none');
-            }}
-            onOpen={() => {
-              activateInputMode('toAccount');
-            }}
-          />
-
-          {/* 6. Date & Time */}
+          {/* 5. Date & Time Cards */}
           <DateTimeCards
             date={date}
             onChangeDate={setDate}
@@ -461,10 +510,10 @@ export default function AddTransferScreen() {
             }}
           />
 
-          {/* 7. Note Card */}
+          {/* 6. Note Card */}
           <NoteCard
             value={note}
-            placeholder="e.g., ATM withdrawal, bank transfer"
+            placeholder="e.g., Moving savings to wallet"
             onChangeText={setNote}
             inputRef={noteInputRef}
             onFocus={() => {
@@ -473,40 +522,21 @@ export default function AddTransferScreen() {
                 scrollToNote();
               }, 80);
             }}
-            onBlur={() => {
-              if (inputMode === 'note') {
-                activateInputMode('none');
-              }
-            }}
             onLayout={(e) => {
               const { y, height } = e.nativeEvent.layout;
               setNoteLayout({ y, height });
             }}
           />
-
-          {/* 8. Keypad */}
-          {isAmountFocused && (
-            <Animated.View
-              entering={FadeInDown.duration(200)}
-              exiting={FadeOutDown.duration(150)}
-            >
-              <NumericKeypad
-                onKeyPress={handleKeyPress}
-                onDelete={handleDelete}
-                style={styles.keypad}
-              />
-            </Animated.View>
-          )}
         </ScrollView>
 
-        {/* 9. Bottom CTA */}
+        {/* 7. Bottom CTA */}
         <View
           style={[
             styles.bottomBar,
             {
               backgroundColor: colors.background,
               paddingBottom:
-                inputMode === 'note'
+                inputMode === 'note' || inputMode === 'amount'
                   ? 10
                   : Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8),
             },
@@ -603,6 +633,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xs,
   },
+  quickEntryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    gap: 6,
+  },
+  quickEntryText: {
+    fontSize: 11,
+    fontFamily: typography.fontFamily.bold,
+    letterSpacing: 0.5,
+  },
+  mintDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
   resetBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -611,17 +659,6 @@ const styles = StyleSheet.create({
   resetText: {
     fontSize: 12,
     fontFamily: typography.fontFamily.medium,
-  },
-  quickEntryPill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 4,
-    borderRadius: borderRadius.full,
-  },
-  quickEntryText: {
-    fontSize: 11,
-    fontFamily: typography.fontFamily.bold,
-    letterSpacing: 0.5,
   },
   amountCard: {
     marginHorizontal: spacing.xl,
@@ -646,16 +683,17 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     marginRight: 2,
   },
-  amountValue: {
+  amountInput: {
     fontSize: 40,
     fontFamily: typography.fontFamily.bold,
     letterSpacing: -1,
-  },
-  cursor: {
-    width: 3,
-    height: 34,
-    marginLeft: 4,
-    borderRadius: 1.5,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    margin: 0,
+    minWidth: 40,
+    textAlign: 'left',
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : {}),
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   inWordsText: {
     fontSize: 13,
@@ -683,20 +721,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: typography.fontFamily.semiBold,
   },
-  directionIndicator: {
+  routeContainer: {
+    gap: spacing.xs,
     alignItems: 'center',
-    marginVertical: -spacing.xs,
   },
-  directionCircle: {
+  swapButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  keypad: {
-    marginTop: spacing.xs,
+    marginVertical: -6,
+    zIndex: 10,
   },
   bottomBar: {
     paddingHorizontal: spacing.xl,
