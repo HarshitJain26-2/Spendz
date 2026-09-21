@@ -49,6 +49,8 @@ export const AmountInput: React.FC<AmountInputProps> = ({
         placeholderTextColor={colors.textTertiary}
         keyboardType="decimal-pad"
         autoFocus={autoFocus}
+        cursorColor={colors.accent}
+        selectionColor={colors.accent}
         style={[styles.input, { color: colors.textPrimary }]}
         maxLength={12}
       />
