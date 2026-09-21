@@ -103,7 +103,19 @@ export default function AddSplitScreen() {
   const equalShare = equalShares[0] || 0;
 
   const handleCustomAmountChange = (key: string, val: string) => {
-    setCustomAmounts((prev) => ({ ...prev, [key]: val }));
+    let cleaned = val.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+    const firstDotIndex = cleaned.indexOf('.');
+    if (firstDotIndex !== -1) {
+      cleaned =
+        cleaned.slice(0, firstDotIndex + 1) +
+        cleaned.slice(firstDotIndex + 1).replace(/\./g, '');
+    }
+    const parts = cleaned.split('.');
+    if (parts[1] && parts[1].length > 2) {
+      parts[1] = parts[1].slice(0, 2);
+    }
+    cleaned = parts.length > 1 ? `${parts[0]}.${parts[1]}` : parts[0];
+    setCustomAmounts((prev) => ({ ...prev, [key]: cleaned }));
   };
 
   const customTotal = Object.values(customAmounts).reduce(
@@ -620,7 +632,9 @@ export default function AddSplitScreen() {
                   <TextInput
                     placeholder="0"
                     placeholderTextColor={colors.textTertiary}
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
+                    cursorColor={colors.accent}
+                    selectionColor={colors.accent}
                     value={customAmounts['you'] || ''}
                     onChangeText={(val) => handleCustomAmountChange('you', val)}
                     style={[
@@ -650,7 +664,9 @@ export default function AddSplitScreen() {
                       <TextInput
                         placeholder="0"
                         placeholderTextColor={colors.textTertiary}
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
+                        cursorColor={colors.accent}
+                        selectionColor={colors.accent}
                         value={customAmounts[fId] || ''}
                         onChangeText={(val) =>
                           handleCustomAmountChange(fId, val)
