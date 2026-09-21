@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { ArrowLeft, RotateCcw, ArrowDownRight } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { Avatar } from '@/components/ui/Avatar';
@@ -22,7 +21,6 @@ import { CategorySelectorCard } from '@/components/transaction/CategorySelectorC
 import { AccountSelectorCard } from '@/components/transaction/AccountSelectorCard';
 import { DateTimeCards } from '@/components/transaction/DateTimeCards';
 import { NoteCard } from '@/components/transaction/NoteCard';
-import { NumericKeypad } from '@/components/ui/NumericKeypad';
 import { numberToWords } from '@/utils/numberToWords';
 import { formatCurrency } from '@/utils/currency';
 import { useTransactionStore } from '@/store/transactionStore';
@@ -57,6 +55,10 @@ export default function AddIncomeScreen() {
   const accounts = useAccountStore((s) => s.accounts);
 
   const [inputMode, setInputMode] = useState<InputMode>('none');
+  const inputModeRef = useRef<InputMode>('none');
+  inputModeRef.current = inputMode;
+
+  const amountInputRef = useRef<TextInput>(null);
   const noteInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const [noteLayout, setNoteLayout] = useState({ y: 0, height: 0 });
@@ -80,10 +82,15 @@ export default function AddIncomeScreen() {
     scrollViewRef.current.scrollTo({ y: targetY, animated: true });
   }, [noteLayout.y, noteLayout.height, scrollViewHeight]);
 
-  // Strict single-input-mode activator: blurs note and dismisses native keyboard when switching away from 'note'
+  // Strict single-input-mode activator: blurs inputs not matching active mode
   const activateInputMode = useCallback((mode: InputMode) => {
     if (mode !== 'note') {
       noteInputRef.current?.blur();
+    }
+    if (mode !== 'amount') {
+      amountInputRef.current?.blur();
+    }
+    if (mode !== 'note' && mode !== 'amount') {
       Keyboard.dismiss();
     }
     setInputMode(mode);
@@ -92,16 +99,20 @@ export default function AddIncomeScreen() {
   // Listen to native keyboard appearance and dismissal
   useEffect(() => {
     const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
-      setInputMode((current) => (current === 'note' ? 'none' : current));
       setKeyboardHeight(0);
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
     });
 
     const showSubscription = Keyboard.addListener('keyboardDidShow', (e) => {
       setKeyboardHeight(e.endCoordinates.height);
-      requestAnimationFrame(() => {
-        scrollToNote();
-      });
+      if (inputModeRef.current === 'note') {
+        requestAnimationFrame(() => {
+          scrollToNote();
+        });
+      } else if (inputModeRef.current === 'amount') {
+        requestAnimationFrame(() => {
+          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+        });
+      }
     });
 
     return () => {
@@ -134,39 +145,51 @@ export default function AddIncomeScreen() {
 
   const isAmountFocused = inputMode === 'amount';
 
-  const handleKeyPress = (key: string) => {
-    if (key === '.') {
-      if (amount.includes('.')) return;
-      setAmount((prev) => (prev ? `${prev}.` : '0.'));
+  const handleAmountChange = (text: string) => {
+    if (text === '') {
+      setAmount('');
       return;
     }
 
-    if (amount === '0') {
-      setAmount(key);
-      return;
+    // Replace comma with dot
+    let cleaned = text.replace(/,/g, '.');
+    // Keep only numbers and dot
+    cleaned = cleaned.replace(/[^0-9.]/g, '');
+
+    // Allow at most one dot
+    const firstDotIndex = cleaned.indexOf('.');
+    if (firstDotIndex !== -1) {
+      cleaned =
+        cleaned.slice(0, firstDotIndex + 1) +
+        cleaned.slice(firstDotIndex + 1).replace(/\./g, '');
     }
 
-    const parts = amount.split('.');
-    if (parts[1] && parts[1].length >= 2) return;
-    if (amount.length >= 8) return;
+    // Strip leading zeros unless followed by a dot (e.g. "05" -> "5", but "0." remains "0.")
+    if (cleaned.length > 1 && cleaned.startsWith('0') && cleaned[1] !== '.') {
+      cleaned = cleaned.replace(/^0+/, '');
+      if (cleaned === '') cleaned = '0';
+    }
 
-    setAmount((prev) => `${prev}${key}`);
-  };
+    if (cleaned === '.') {
+      cleaned = '0.';
+    }
 
-  const handleDelete = () => {
-    setAmount((prev) => (prev.length > 0 ? prev.slice(0, -1) : ''));
+    // Split and limit
+    const parts = cleaned.split('.');
+    if (parts[0].length > 8) {
+      parts[0] = parts[0].slice(0, 8);
+    }
+    if (parts[1] && parts[1].length > 2) {
+      parts[1] = parts[1].slice(0, 2);
+    }
+
+    cleaned = parts.length > 1 ? `${parts[0]}.${parts[1]}` : parts[0];
+    setAmount(cleaned);
   };
 
   const handleAddQuickAmount = (val: number) => {
     const current = parseFloat(amount) || 0;
     setAmount(Math.round(current + val).toString());
-  };
-
-  const handleRoundOff = () => {
-    const current = parseFloat(amount) || 0;
-    if (current <= 0) return;
-    const rounded = Math.ceil(current / 100) * 100;
-    setAmount((rounded === current ? rounded + 100 : rounded).toString());
   };
 
   const handleResetDraft = () => {
@@ -206,7 +229,7 @@ export default function AddIncomeScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
       >
-        {/* 1. Header */}
+        {/* 1. Header Row */}
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => router.back()}
@@ -248,18 +271,18 @@ export default function AddIncomeScreen() {
             setScrollViewHeight(e.nativeEvent.layout.height);
           }}
         >
-          {/* 2. Sub-Header */}
+          {/* 2. Sub-Header (Quick Entry + Reset Draft) */}
           <View style={styles.subHeader}>
             <View
               style={[
                 styles.quickEntryPill,
-                { backgroundColor: colors.incomeLight },
+                { backgroundColor: colors.surfaceElevated },
               ]}
             >
               <Text
-                style={[styles.quickEntryText, { color: colors.income }]}
+                style={[styles.quickEntryText, { color: colors.textSecondary }]}
               >
-                INCOMING
+                QUICK ENTRY
               </Text>
               <View style={[styles.mintDot, { backgroundColor: colors.income }]} />
             </View>
@@ -280,7 +303,7 @@ export default function AddIncomeScreen() {
           <TouchableOpacity
             activeOpacity={0.9}
             onPress={() => {
-              activateInputMode('amount');
+              amountInputRef.current?.focus();
             }}
             style={[
               styles.amountCard,
@@ -299,12 +322,30 @@ export default function AddIncomeScreen() {
               <Text style={[styles.amountCurrency, { color: colors.income }]}>
                 +₹
               </Text>
-              <Text style={[styles.amountValue, { color: colors.textPrimary }]}>
-                {amount || '0'}
-              </Text>
-              {isAmountFocused && (
-                <View style={[styles.cursor, { backgroundColor: colors.income }]} />
-              )}
+              <TextInput
+                ref={amountInputRef}
+                value={amount}
+                onChangeText={handleAmountChange}
+                onFocus={() => {
+                  activateInputMode('amount');
+                }}
+                onBlur={() => {
+                  if (amount === '' || amount === '.') {
+                    setAmount('0');
+                  }
+                }}
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                cursorColor={colors.income}
+                selectionColor={colors.income}
+                placeholder="0"
+                placeholderTextColor={colors.textTertiary}
+                style={[
+                  styles.amountInput,
+                  { color: colors.textPrimary },
+                  Platform.OS === 'web' && ({ width: `${Math.max(1, (amount || '0').length + 0.5)}ch` } as any),
+                ]}
+              />
             </View>
 
             <Text style={[styles.inWordsText, { color: colors.textTertiary }]}>
@@ -315,7 +356,6 @@ export default function AddIncomeScreen() {
             <View style={styles.shortcutsRow}>
               <TouchableOpacity
                 onPress={() => {
-                  activateInputMode('amount');
                   handleAddQuickAmount(1000);
                 }}
                 activeOpacity={0.7}
@@ -336,7 +376,6 @@ export default function AddIncomeScreen() {
 
               <TouchableOpacity
                 onPress={() => {
-                  activateInputMode('amount');
                   handleAddQuickAmount(5000);
                 }}
                 activeOpacity={0.7}
@@ -357,7 +396,6 @@ export default function AddIncomeScreen() {
 
               <TouchableOpacity
                 onPress={() => {
-                  activateInputMode('amount');
                   handleAddQuickAmount(10000);
                 }}
                 activeOpacity={0.7}
@@ -378,17 +416,21 @@ export default function AddIncomeScreen() {
 
               <TouchableOpacity
                 onPress={() => {
-                  activateInputMode('amount');
-                  handleRoundOff();
+                  handleAddQuickAmount(50000);
                 }}
                 activeOpacity={0.7}
                 style={[
-                  styles.roundOffChip,
-                  { backgroundColor: colors.incomeLight },
+                  styles.shortcutChip,
+                  {
+                    backgroundColor: colors.surfaceElevated,
+                    borderColor: colors.border,
+                  },
                 ]}
               >
-                <Text style={[styles.roundOffText, { color: colors.income }]}>
-                  Round off
+                <Text
+                  style={[styles.shortcutText, { color: colors.textPrimary }]}
+                >
+                  +₹50,000
                 </Text>
               </TouchableOpacity>
             </View>
@@ -411,7 +453,7 @@ export default function AddIncomeScreen() {
             }}
           />
 
-          {/* 5. Received In Account */}
+          {/* 5. Deposited To Account Selector Card */}
           <AccountSelectorCard
             accounts={accounts}
             selectedId={accountId}
@@ -419,7 +461,6 @@ export default function AddIncomeScreen() {
             onOpenChange={(open) => {
               activateInputMode(open ? 'account' : 'none');
             }}
-            label="RECEIVED IN"
             onSelect={(a) => {
               setAccountId(a.id);
               activateInputMode('none');
@@ -444,49 +485,30 @@ export default function AddIncomeScreen() {
           {/* 7. Note Card */}
           <NoteCard
             value={note}
-            placeholder="e.g., Monthly salary, Freelance payment"
             onChangeText={setNote}
             inputRef={noteInputRef}
+            placeholder="Salary, Freelance, Dividend..."
             onFocus={() => {
               activateInputMode('note');
               setTimeout(() => {
                 scrollToNote();
               }, 80);
             }}
-            onBlur={() => {
-              if (inputMode === 'note') {
-                activateInputMode('none');
-              }
-            }}
             onLayout={(e) => {
               const { y, height } = e.nativeEvent.layout;
               setNoteLayout({ y, height });
             }}
           />
-
-          {/* 8. Numeric Keypad */}
-          {isAmountFocused && (
-            <Animated.View
-              entering={FadeInDown.duration(200)}
-              exiting={FadeOutDown.duration(150)}
-            >
-              <NumericKeypad
-                onKeyPress={handleKeyPress}
-                onDelete={handleDelete}
-                style={styles.keypad}
-              />
-            </Animated.View>
-          )}
         </ScrollView>
 
-        {/* 9. Bottom CTA */}
+        {/* 8. Bottom CTA */}
         <View
           style={[
             styles.bottomBar,
             {
               backgroundColor: colors.background,
               paddingBottom:
-                inputMode === 'note'
+                inputMode === 'note' || inputMode === 'amount'
                   ? 10
                   : Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8),
             },
@@ -519,7 +541,7 @@ export default function AddIncomeScreen() {
             <View
               style={[
                 styles.saveDivider,
-                { backgroundColor: isValid ? 'rgba(255,255,255,0.25)' : colors.border },
+                { backgroundColor: isValid ? 'rgba(255,255,255,0.2)' : colors.border },
               ]}
             />
 
@@ -633,16 +655,17 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     marginRight: 2,
   },
-  amountValue: {
+  amountInput: {
     fontSize: 40,
     fontFamily: typography.fontFamily.bold,
     letterSpacing: -1,
-  },
-  cursor: {
-    width: 3,
-    height: 34,
-    marginLeft: 4,
-    borderRadius: 1.5,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    margin: 0,
+    minWidth: 40,
+    textAlign: 'left',
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : {}),
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   inWordsText: {
     fontSize: 13,
@@ -669,20 +692,6 @@ const styles = StyleSheet.create({
   shortcutText: {
     fontSize: 12,
     fontFamily: typography.fontFamily.semiBold,
-  },
-  roundOffChip: {
-    paddingVertical: 7,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  roundOffText: {
-    fontSize: 12,
-    fontFamily: typography.fontFamily.semiBold,
-  },
-  keypad: {
-    marginTop: spacing.xs,
   },
   bottomBar: {
     paddingHorizontal: spacing.xl,
