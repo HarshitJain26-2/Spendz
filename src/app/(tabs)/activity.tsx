@@ -42,6 +42,7 @@ export default function ActivityScreen() {
   const bottomTabInset = useBottomTabInset(spacing.lg);
   const userProfile = useAppStore((s) => s.userProfile);
   const transactions = useTransactionStore((s) => s.transactions);
+  const categories = useCategoryStore((s) => s.categories);
   const getCategoryById = useCategoryStore((s) => s.getCategoryById);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -76,7 +77,7 @@ export default function ActivityScreen() {
       }
       return true;
     });
-  }, [transactions, activeFilter, searchQuery, getCategoryById]);
+  }, [transactions, activeFilter, searchQuery, categories, getCategoryById]);
 
   // Group by date with calculated day badges
   const sections = useMemo(() => {

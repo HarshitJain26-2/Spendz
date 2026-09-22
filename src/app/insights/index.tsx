@@ -35,6 +35,7 @@ export default function InsightsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const transactions = useTransactionStore((s) => s.transactions);
+  const categories = useCategoryStore((s) => s.categories);
   const getCategoryById = useCategoryStore((s) => s.getCategoryById);
   const splitExpenses = useSplitStore((s) => s.splitExpenses);
 
@@ -112,7 +113,7 @@ export default function InsightsScreen() {
       saved: inc - exp,
       categoryBreakdown: breakdown,
     };
-  }, [transactions, currentDate, getCategoryById, splitExpenses]);
+  }, [transactions, currentDate, categories, getCategoryById, splitExpenses]);
 
   const savingsRate = income > 0 ? Math.round((saved / income) * 100) : 0;
 

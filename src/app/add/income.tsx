@@ -440,6 +440,7 @@ export default function AddIncomeScreen() {
           <CategorySelectorCard
             categories={incomeCategories}
             selectedId={categoryId}
+            categoryType="income"
             isOpen={inputMode === 'category'}
             onOpenChange={(open) => {
               activateInputMode(open ? 'category' : 'none');

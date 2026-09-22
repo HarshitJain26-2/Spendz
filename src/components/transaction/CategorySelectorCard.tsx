@@ -109,6 +109,7 @@ interface CategorySelectorCardProps {
   categories: Category[];
   selectedId: string | null;
   onSelect: (category: Category) => void;
+  categoryType?: 'expense' | 'income';
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   onOpen?: () => void;
@@ -119,6 +120,7 @@ export const CategorySelectorCard: React.FC<CategorySelectorCardProps> = ({
   categories,
   selectedId,
   onSelect,
+  categoryType,
   isOpen,
   onOpenChange,
   onOpen,
@@ -206,11 +208,12 @@ export const CategorySelectorCard: React.FC<CategorySelectorCardProps> = ({
     }
 
     // Add category through existing categoryStore
+    const targetType = categoryType || categories[0]?.type || 'expense';
     const newCategory = useCategoryStore.getState().addCategory({
       name: trimmed,
       icon: selectedIcon,
       color: selectedColor,
-      type: 'expense',
+      type: targetType,
     });
 
     // Auto-select newly created category and close UI

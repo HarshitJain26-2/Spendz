@@ -20,6 +20,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
 import { CategoryPicker } from '@/components/transaction/CategoryPicker';
 import { AccountPicker } from '@/components/transaction/AccountPicker';
+import { DateTimeCards } from '@/components/transaction/DateTimeCards';
 import { useTransactionStore } from '@/store/transactionStore';
 import { useCategoryStore } from '@/store/categoryStore';
 import { useAccountStore } from '@/store/accountStore';
@@ -57,6 +58,7 @@ export default function EditTransactionScreen() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [accountId, setAccountId] = useState('');
   const [note, setNote] = useState('');
+  const [date, setDate] = useState(getTodayISO());
   const [paidByType, setPaidByType] = useState<PaidByType>('me');
   const [paidByFriendId, setPaidByFriendId] = useState<string | null>(null);
   const [isMeSelected, setIsMeSelected] = useState(true);
@@ -68,6 +70,7 @@ export default function EditTransactionScreen() {
       setCategoryId(transaction.categoryId);
       setAccountId(transaction.accountId);
       setNote(transaction.note || '');
+      setDate(transaction.date || getTodayISO());
     }
   }, [transaction]);
 
@@ -308,6 +311,7 @@ export default function EditTransactionScreen() {
         categoryId,
         accountId: isFriendPaid ? (transaction.accountId || accounts[0]?.id || '') : accountId,
         note: note.trim() || undefined,
+        date,
       },
       {
         skipBalanceUpdate: isFriendPaid,
@@ -547,6 +551,13 @@ export default function EditTransactionScreen() {
               onSelect={(c) => setCategoryId(c.id)}
             />
           )}
+
+          {/* Date Selector */}
+          <DateTimeCards
+            date={date}
+            onChangeDate={setDate}
+            style={{ paddingHorizontal: spacing.xl, marginBottom: spacing.lg }}
+          />
 
           {/* Note */}
           <View style={styles.noteContainer}>

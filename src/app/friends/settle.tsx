@@ -36,8 +36,10 @@ export default function SettleScreen() {
   const splitExpenses = useSplitStore((s) => s.splitExpenses);
   const splits = useMemo(
     () =>
-      splitExpenses.filter((split) =>
-        split.participants?.some((p) => p.friendId === friendId)
+      splitExpenses.filter(
+        (split) =>
+          split.paidByFriendId === friendId ||
+          split.participants?.some((p) => p.friendId === friendId)
       ),
     [splitExpenses, friendId]
   );
