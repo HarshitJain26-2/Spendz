@@ -51,58 +51,31 @@ function syncPayer(currentPayerType, currentPayerFriendId, newMeSelected, newFri
   let paidByFriendId = currentPayerFriendId;
 
   if (paidByType === 'me') {
-    if (newMeSelected) {
-      // Current payer is still participating: keep current payer
-      return { paidByType: 'me', paidByFriendId: null };
-    }
-    // Current payer is no longer participating:
-    // choose Me if Me is selected (not the case here since newMeSelected is false)
-    // otherwise choose the first selected friend
-    // otherwise payer = null
-    if (newFriendIds.length > 0) {
-      return { paidByType: 'friend', paidByFriendId: newFriendIds[0] };
-    } else {
-      return { paidByType: null, paidByFriendId: null };
-    }
+    return { paidByType: 'me', paidByFriendId: null };
   } else if (paidByType === 'friend') {
     if (paidByFriendId && newFriendIds.includes(paidByFriendId)) {
-      // Current payer friend is still participating: keep current payer
       return { paidByType: 'friend', paidByFriendId };
     }
-    // Payer friend is no longer participating:
-    if (newMeSelected) {
-      return { paidByType: 'me', paidByFriendId: null };
-    } else if (newFriendIds.length > 0) {
-      return { paidByType: 'friend', paidByFriendId: newFriendIds[0] };
-    } else {
-      return { paidByType: null, paidByFriendId: null };
-    }
+    return { paidByType: 'me', paidByFriendId: null };
   }
   return { paidByType, paidByFriendId };
 }
 
-// 1. Payer is Me, Me is unselected -> Payer switches to first selected friend
+// 1. Payer is Me, Me is unselected -> Payer stays Me (user can always pay for friends)
 const p1 = syncPayer('me', null, false, ['f1', 'f2']);
-assert(p1.paidByType === 'friend' && p1.paidByFriendId === 'f1', 'When Me unselected, payer switches to first selected friend');
+assert(p1.paidByType === 'me' && p1.paidByFriendId === null, 'When Me is unselected, payer stays Me (user can pay for friends)');
 
-// 2. Payer is Me, Me remains selected when a friend is added/removed -> Payer stays Me
+// 2. Payer is Me, Me remains selected -> Payer stays Me
 const p2 = syncPayer('me', null, true, ['f1', 'f2']);
 assert(p2.paidByType === 'me' && p2.paidByFriendId === null, 'When Me remains selected, payer stays Me');
 
-// 3. Payer is Friend 1, Friend 1 remains selected -> Payer stays Friend 1 (even if Me toggled)
+// 3. Payer is Friend 1, Friend 1 remains selected -> Payer stays Friend 1
 const p3 = syncPayer('friend', 'f1', false, ['f1', 'f2']);
-assert(p3.paidByType === 'friend' && p3.paidByFriendId === 'f1', 'When Friend 1 pays and Me is unselected, payer stays Friend 1');
+assert(p3.paidByType === 'friend' && p3.paidByFriendId === 'f1', 'When Friend 1 pays, payer stays Friend 1');
 
-const p4 = syncPayer('friend', 'f1', true, ['f1', 'f2']);
-assert(p4.paidByType === 'friend' && p4.paidByFriendId === 'f1', 'When Friend 1 pays and Me is re-selected, payer stays Friend 1');
-
-// 4. Payer is Friend 1, Friend 1 is removed, Me is selected -> Payer switches to Me
-const p5 = syncPayer('friend', 'f1', true, ['f2']);
-assert(p5.paidByType === 'me' && p5.paidByFriendId === null, 'When payer Friend 1 is removed and Me is selected, payer switches to Me');
-
-// 5. Payer is Friend 1, Friend 1 is removed, Me is unselected -> Payer switches to first remaining friend (f2)
-const p6 = syncPayer('friend', 'f1', false, ['f2']);
-assert(p6.paidByType === 'friend' && p6.paidByFriendId === 'f2', 'When payer Friend 1 is removed and Me is unselected, payer switches to next selected friend');
+// 4. Payer is Friend 1, Friend 1 is removed -> Payer falls back to Me
+const p4 = syncPayer('friend', 'f1', true, ['f2']);
+assert(p4.paidByType === 'me' && p4.paidByFriendId === null, 'When payer Friend 1 is removed, payer falls back to Me');
 
 console.log('\n--- Testing Custom Split Sum ---');
 function calcCustomTotal(isMeSelected, selectedFriendIds, customAmounts) {
@@ -155,7 +128,8 @@ function getFriendBalanceForUser(splits, friendId) {
   return balance;
 }
 
-const splitExpenseWithoutMe = {
+// Case A: Friend 1 paid, Me is unselected -> User owes 0
+const splitFriendPaid = {
   paidByType: 'friend',
   paidByFriendId: 'f1',
   participants: [
@@ -163,9 +137,20 @@ const splitExpenseWithoutMe = {
     { friendId: 'f2', name: 'Friend 2', amount: 150, isPaid: false },
   ],
 };
+const userBalanceF1 = getFriendBalanceForUser([splitFriendPaid], 'f1');
+assert(userBalanceF1 === 0, 'When Me is unselected and Friend 1 pays, user owes 0 to Friend 1');
 
-const userBalanceWithF1 = getFriendBalanceForUser([splitExpenseWithoutMe], 'f1');
-assert(userBalanceWithF1 === 0, 'When Me is unselected and Friend 1 pays, user owes 0 to Friend 1 (no fake debt)');
+// Case B: Me paid, Me is unselected -> Friend 1 owes User 150
+const splitMePaid = {
+  paidByType: 'me',
+  paidByFriendId: null,
+  participants: [
+    { friendId: 'f1', name: 'Friend 1', amount: 150, isPaid: false },
+    { friendId: 'f2', name: 'Friend 2', amount: 150, isPaid: false },
+  ],
+};
+const userBalanceFromF1 = getFriendBalanceForUser([splitMePaid], 'f1');
+assert(userBalanceFromF1 === 150, 'When Me is unselected and Me pays, Friend 1 owes user 150');
 
 console.log(`\n========================================`);
 console.log(`Results: ${passedTests}/${totalTests} tests passed`);

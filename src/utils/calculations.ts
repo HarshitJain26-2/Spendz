@@ -94,5 +94,6 @@ export const getUserPersonalExpense = (
   if (split.paidByType === 'friend') {
     return 0;
   }
-  return transaction.amount;
+  // Paid by Me, but Me is not a participant: friends owe 100% of it, personal share is 0
+  return 0;
 };

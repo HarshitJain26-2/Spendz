@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -48,7 +48,9 @@ export default function AddSplitScreen() {
   const addFriend = useFriendStore((s) => s.addFriend);
 
   const [amount, setAmount] = useState('');
-  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [categoryId, setCategoryId] = useState<string | null>(
+    expenseCategories[0]?.id || null
+  );
   const [accountId, setAccountId] = useState(accounts[0]?.id || '');
   const [note, setNote] = useState('');
   const [splitMethod, setSplitMethod] = useState<'equal' | 'custom'>('equal');
@@ -68,28 +70,36 @@ export default function AddSplitScreen() {
   const [newFriendName, setNewFriendName] = useState('');
   const [isAddingFriend, setIsAddingFriend] = useState(false);
 
-  // Synchronizes the payer whenever participant selection changes (Me or friends)
-  const syncPayer = (newMeSelected: boolean, newFriendIds: string[]) => {
-    // Current payer is still participating if:
-    // 1. Paid by 'me' AND Me is selected
-    // 2. Paid by 'friend' AND paidByFriendId is in newFriendIds
-    const isCurrentPayerValid =
-      (paidByType === 'me' && newMeSelected) ||
-      (paidByType === 'friend' && paidByFriendId !== null && newFriendIds.includes(paidByFriendId));
+  // Ensure default account & category are selected when loaded
+  useEffect(() => {
+    if (!accountId && accounts.length > 0) {
+      setAccountId(accounts[0].id);
+    }
+  }, [accounts, accountId]);
 
-    if (isCurrentPayerValid) {
+  useEffect(() => {
+    if (!categoryId && expenseCategories.length > 0) {
+      setCategoryId(expenseCategories[0].id);
+    }
+  }, [expenseCategories, categoryId]);
+
+  const effectiveAccountId = accountId || accounts[0]?.id || '';
+  const effectiveCategoryId = categoryId || expenseCategories[0]?.id || null;
+
+  // Synchronizes the payer whenever participant selection changes (Me or friends)
+  const syncPayer = (_newMeSelected: boolean, newFriendIds: string[]) => {
+    // If 'me' is paying, 'me' is always a valid payer
+    if (paidByType === 'me') {
       return;
     }
 
-    // Current payer is no longer participating:
-    if (newMeSelected) {
+    // If a friend is paying, verify they are still selected
+    if (paidByType === 'friend') {
+      if (paidByFriendId && newFriendIds.includes(paidByFriendId)) {
+        return;
+      }
+      // Payer friend is no longer participating: default back to Me
       setPaidByType('me');
-      setPaidByFriendId(null);
-    } else if (newFriendIds.length > 0) {
-      setPaidByType('friend');
-      setPaidByFriendId(newFriendIds[0]);
-    } else {
-      setPaidByType('friend');
       setPaidByFriendId(null);
     }
   };
@@ -176,17 +186,12 @@ export default function AddSplitScreen() {
       return;
     }
 
-    if (!isMeSelected && paidByType === 'me') {
-      Alert.alert('Select Payer', 'Please choose a valid participant who paid.');
-      return;
-    }
-
     if (paidByType === 'friend' && !payerFriend) {
       Alert.alert('Select Payer', 'Please choose a valid participant who paid.');
       return;
     }
 
-    if (paidByType === 'me' && !accountId) {
+    if (paidByType === 'me' && !effectiveAccountId) {
       Alert.alert('Select Account', 'Please select an account from which you paid.');
       return;
     }
@@ -203,8 +208,8 @@ export default function AddSplitScreen() {
     const transaction = addTransaction({
       type: 'expense',
       amount: totalNum,
-      categoryId,
-      accountId: accountId || accounts[0]?.id || '',
+      categoryId: effectiveCategoryId,
+      accountId: effectiveAccountId,
       note: note.trim() || (isFriendPaid ? `Split Expense (Paid by ${payerFriend?.name})` : 'Split Expense'),
       date: getTodayISO(),
       skipBalanceUpdate: isFriendPaid, // Zero account outflow when friend paid!
@@ -271,7 +276,7 @@ export default function AddSplitScreen() {
     (!isMeSelected && selectedFriendIds.length > 0);
 
   const hasValidPayer =
-    (paidByType === 'me' && isMeSelected && Boolean(accountId)) ||
+    (paidByType === 'me' && Boolean(effectiveAccountId)) ||
     (paidByType === 'friend' && Boolean(paidByFriendId) && selectedFriendIds.includes(paidByFriendId!));
 
   const isCustomValid =
@@ -476,33 +481,31 @@ export default function AddSplitScreen() {
               },
             ]}
           >
-            {/* Option: Me (Only shown when Me is participating) */}
-            {isMeSelected && (
-              <TouchableOpacity
-                onPress={() => {
-                  setPaidByType('me');
-                  setPaidByFriendId(null);
-                }}
-                activeOpacity={0.7}
-                style={[
-                  styles.payerRow,
-                  {
-                    borderBottomColor: colors.border,
-                    borderBottomWidth: selectedFriendIds.length > 0 ? 1 : 0,
-                  },
-                ]}
-              >
-                <View style={styles.payerLeft}>
-                  <Avatar name="You" size={32} />
-                  <Text style={[styles.payerName, { color: colors.textPrimary }]}>
-                    Me
-                  </Text>
-                </View>
-                {paidByType === 'me' && (
-                  <Check size={18} color={colors.accent} strokeWidth={2.5} />
-                )}
-              </TouchableOpacity>
-            )}
+            {/* Option: Me */}
+            <TouchableOpacity
+              onPress={() => {
+                setPaidByType('me');
+                setPaidByFriendId(null);
+              }}
+              activeOpacity={0.7}
+              style={[
+                styles.payerRow,
+                {
+                  borderBottomColor: colors.border,
+                  borderBottomWidth: selectedFriendIds.length > 0 ? 1 : 0,
+                },
+              ]}
+            >
+              <View style={styles.payerLeft}>
+                <Avatar name="You" size={32} />
+                <Text style={[styles.payerName, { color: colors.textPrimary }]}>
+                  Me
+                </Text>
+              </View>
+              {paidByType === 'me' && (
+                <Check size={18} color={colors.accent} strokeWidth={2.5} />
+              )}
+            </TouchableOpacity>
 
             {/* Selected Friends Options */}
             {selectedFriendIds.map((fId, idx) => {
@@ -551,7 +554,7 @@ export default function AddSplitScreen() {
               </View>
               <AccountPicker
                 accounts={accounts}
-                selectedId={accountId}
+                selectedId={effectiveAccountId}
                 onSelect={(a) => setAccountId(a.id)}
               />
             </>

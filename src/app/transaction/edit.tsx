@@ -109,30 +109,24 @@ export default function EditTransactionScreen() {
     return list;
   }, [friends, splitExpense]);
 
-  const syncPayer = (newMeSelected: boolean, newFriendIds: string[]) => {
+  useEffect(() => {
+    if (!accountId && accounts.length > 0) {
+      setAccountId(transaction?.accountId || accounts[0].id);
+    }
+  }, [accounts, accountId, transaction]);
+
+  const effectiveAccountId = accountId || transaction?.accountId || accounts[0]?.id || '';
+
+  const syncPayer = (_newMeSelected: boolean, newFriendIds: string[]) => {
     if (paidByType === 'me') {
-      if (newMeSelected) return;
-      if (newFriendIds.length > 0) {
-        setPaidByType('friend');
-        setPaidByFriendId(newFriendIds[0]);
-      } else {
-        setPaidByType('me');
-        setPaidByFriendId(null);
-      }
-    } else if (paidByType === 'friend') {
+      return;
+    }
+    if (paidByType === 'friend') {
       if (paidByFriendId && newFriendIds.includes(paidByFriendId)) {
         return;
       }
-      if (newMeSelected) {
-        setPaidByType('me');
-        setPaidByFriendId(null);
-      } else if (newFriendIds.length > 0) {
-        setPaidByType('friend');
-        setPaidByFriendId(newFriendIds[0]);
-      } else {
-        setPaidByType('friend');
-        setPaidByFriendId(null);
-      }
+      setPaidByType('me');
+      setPaidByFriendId(null);
     }
   };
 
@@ -183,15 +177,17 @@ export default function EditTransactionScreen() {
     (isMeSelected && selectedFriendIds.length > 0) ||
     (!isMeSelected && selectedFriendIds.length > 0);
 
+  const hasValidPayer =
+    (paidByType === 'me' && Boolean(effectiveAccountId)) ||
+    (paidByType === 'friend' && Boolean(paidByFriendId) && selectedFriendIds.includes(paidByFriendId!));
+
   const isSplitExpenseValid = !splitExpense || (
-    hasValidParticipants &&
-    ((paidByType === 'me' && isMeSelected && Boolean(accountId)) ||
-     (paidByType === 'friend' && Boolean(paidByFriendId) && selectedFriendIds.includes(paidByFriendId!)))
+    hasValidParticipants && hasValidPayer
   );
 
   const isValid =
     parseFloat(amount) > 0 &&
-    (splitExpense ? isSplitExpenseValid : (transaction.type === 'transfer' || Boolean(accountId)));
+    (splitExpense ? isSplitExpenseValid : (transaction.type === 'transfer' || Boolean(effectiveAccountId)));
 
   const handleSave = () => {
     const parsedAmount = parseFloat(amount);
@@ -202,7 +198,7 @@ export default function EditTransactionScreen() {
         Alert.alert('Select Participants', 'Please select at least one friend to split with.');
         return;
       }
-      if (paidByType === 'me' && (!isMeSelected || !accountId)) {
+      if (paidByType === 'me' && !effectiveAccountId) {
         Alert.alert('Invalid Selection', 'Please select an account for payment.');
         return;
       }
@@ -211,7 +207,7 @@ export default function EditTransactionScreen() {
         return;
       }
     } else {
-      if (transaction.type !== 'transfer' && !accountId) return;
+      if (transaction.type !== 'transfer' && !effectiveAccountId) return;
     }
 
     // 1. Update split expense if linked
@@ -447,33 +443,31 @@ export default function EditTransactionScreen() {
                 padding="none"
                 style={styles.payerContainer}
               >
-                {/* Option: Me (Only when Me is selected) */}
-                {isMeSelected && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      setPaidByType('me');
-                      setPaidByFriendId(null);
-                    }}
-                    activeOpacity={0.7}
-                    style={[
-                      styles.payerRow,
-                      {
-                        borderBottomColor: colors.border,
-                        borderBottomWidth: selectedFriendIds.length > 0 ? 1 : 0,
-                      },
-                    ]}
-                  >
-                    <View style={styles.payerLeft}>
-                      <Avatar name="You" size={32} />
-                      <Text style={[styles.payerName, { color: colors.textPrimary }]}>
-                        Me
-                      </Text>
-                    </View>
-                    {paidByType === 'me' && (
-                      <Check size={18} color={colors.accent} strokeWidth={2.5} />
-                    )}
-                  </TouchableOpacity>
-                )}
+                {/* Option: Me */}
+                <TouchableOpacity
+                  onPress={() => {
+                    setPaidByType('me');
+                    setPaidByFriendId(null);
+                  }}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.payerRow,
+                    {
+                      borderBottomColor: colors.border,
+                      borderBottomWidth: selectedFriendIds.length > 0 ? 1 : 0,
+                    },
+                  ]}
+                >
+                  <View style={styles.payerLeft}>
+                    <Avatar name="You" size={32} />
+                    <Text style={[styles.payerName, { color: colors.textPrimary }]}>
+                      Me
+                    </Text>
+                  </View>
+                  {paidByType === 'me' && (
+                    <Check size={18} color={colors.accent} strokeWidth={2.5} />
+                  )}
+                </TouchableOpacity>
 
                 {/* Selected Friends */}
                 {selectedFriendIds.map((fId, idx) => {
@@ -539,7 +533,7 @@ export default function EditTransactionScreen() {
               )}
               <AccountPicker
                 accounts={accounts}
-                selectedId={accountId}
+                selectedId={effectiveAccountId}
                 onSelect={(a) => setAccountId(a.id)}
               />
             </>
