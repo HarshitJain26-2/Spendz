@@ -37,6 +37,7 @@ interface SplitState {
   getSplitsByFriend: (friendId: string) => SplitExpense[];
   getFriendBalance: (friendId: string) => number;
   getSplitByTransactionId: (transactionId: string) => SplitExpense | undefined;
+  updateFriendName: (friendId: string, name: string) => void;
 }
 
 export const useSplitStore = create<SplitState>((set, get) => ({
@@ -57,6 +58,7 @@ export const useSplitStore = create<SplitState>((set, get) => ({
     const splitId = generateId();
     const paidByType: PaidByType = data.paidByType || 'me';
     const paidByFriendId = data.paidByFriendId || null;
+    const totalAmount = Number(data.totalAmount) || 0;
 
     const participantRecords: SplitParticipant[] = data.participants.map((p) => {
       // If 'me' paid, 'you' (friendId === null) is marked paid.
@@ -71,7 +73,7 @@ export const useSplitStore = create<SplitState>((set, get) => ({
         splitExpenseId: splitId,
         friendId: p.friendId,
         name: p.name,
-        amount: p.amount,
+        amount: Number(p.amount) || 0,
         isPaid,
         settledAt: isPaid ? now : null,
       };
@@ -80,7 +82,7 @@ export const useSplitStore = create<SplitState>((set, get) => ({
     const splitExpense: SplitExpense = {
       id: splitId,
       transactionId: data.transactionId,
-      totalAmount: data.totalAmount,
+      totalAmount,
       splitMethod: data.splitMethod,
       status: 'pending',
       paidByType,
@@ -93,7 +95,7 @@ export const useSplitStore = create<SplitState>((set, get) => ({
       {
         id: splitId,
         transactionId: data.transactionId,
-        totalAmount: data.totalAmount,
+        totalAmount,
         splitMethod: data.splitMethod,
         status: 'pending',
         paidByType,
@@ -111,15 +113,25 @@ export const useSplitStore = create<SplitState>((set, get) => ({
   },
 
   updateSplitExpense: (splitExpenseId, data, participants) => {
-    repository.updateSplitExpense(splitExpenseId, data, participants);
+    const sanitizedData = {
+      ...data,
+      ...(data.totalAmount !== undefined ? { totalAmount: Number(data.totalAmount) || 0 } : {}),
+    };
+
+    const sanitizedParticipants = participants?.map((p) => ({
+      ...p,
+      amount: Number(p.amount) || 0,
+    }));
+
+    repository.updateSplitExpense(splitExpenseId, sanitizedData, sanitizedParticipants);
 
     set((state) => ({
       splitExpenses: state.splitExpenses.map((s) => {
         if (s.id !== splitExpenseId) return s;
         return {
           ...s,
-          ...data,
-          participants: participants || s.participants,
+          ...sanitizedData,
+          participants: sanitizedParticipants || s.participants,
         };
       }),
     }));
@@ -187,7 +199,23 @@ export const useSplitStore = create<SplitState>((set, get) => ({
   getFriendBalance: (friendId) => {
     // Positive = they owe you, negative = you owe them
     let balance = 0;
+
+    // Cross-check parent transactions so deleted transactions never keep phantom friend balances
+    let validTxIds: Set<string> | null = null;
+    try {
+      const { useTransactionStore } = require('./transactionStore');
+      const txs = useTransactionStore.getState().transactions;
+      if (Array.isArray(txs)) {
+        validTxIds = new Set(txs.map((t: any) => t.id));
+      }
+    } catch {
+      validTxIds = null;
+    }
+
     for (const split of get().splitExpenses) {
+      if (validTxIds && !validTxIds.has(split.transactionId)) {
+        continue;
+      }
       const paidByType = split.paidByType || 'me';
 
       if (paidByType === 'me') {
@@ -196,7 +224,7 @@ export const useSplitStore = create<SplitState>((set, get) => ({
           (p) => p.friendId === friendId
         );
         if (participant && !participant.isPaid) {
-          balance += participant.amount;
+          balance += Number(participant.amount) || 0;
         }
       } else if (paidByType === 'friend' && split.paidByFriendId === friendId) {
         // This friend paid: find "You" (friendId === null) entry
@@ -204,7 +232,7 @@ export const useSplitStore = create<SplitState>((set, get) => ({
           (p) => p.friendId === null
         );
         if (myParticipant && !myParticipant.isPaid) {
-          balance -= myParticipant.amount;
+          balance -= Number(myParticipant.amount) || 0;
         }
       }
       // If another friend paid (paidByFriendId !== friendId), neither you owe them nor they owe you
@@ -214,5 +242,16 @@ export const useSplitStore = create<SplitState>((set, get) => ({
 
   getSplitByTransactionId: (transactionId) => {
     return get().splitExpenses.find((s) => s.transactionId === transactionId);
+  },
+
+  updateFriendName: (friendId, name) => {
+    set((state) => ({
+      splitExpenses: state.splitExpenses.map((s) => ({
+        ...s,
+        participants: s.participants?.map((p) =>
+          p.friendId === friendId ? { ...p, name } : p
+        ),
+      })),
+    }));
   },
 }));

@@ -56,6 +56,15 @@ export const useFriendStore = create<FriendState>((set, get) => ({
         f.id === id ? { ...f, ...data } : f
       ),
     }));
+
+    if (data.name) {
+      try {
+        const { useSplitStore } = require('./splitStore');
+        useSplitStore.getState().updateFriendName(id, data.name);
+      } catch (e) {
+        console.warn('Failed to update participant name in splitStore:', e);
+      }
+    }
   },
 
   deleteFriend: (id) => {

@@ -46,7 +46,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
       id: generateId(),
       name: data.name,
       type: data.type,
-      balance: data.balance,
+      balance: Number(data.balance) || 0,
       icon: data.icon,
       color: data.color,
       isDefault: data.isDefault ?? false,
@@ -61,11 +61,16 @@ export const useAccountStore = create<AccountState>((set, get) => ({
 
   updateAccount: (id, data) => {
     const now = getTodayISO();
-    repository.updateAccount(id, { ...data, updatedAt: now });
+    const sanitizedData = {
+      ...data,
+      ...(data.balance !== undefined ? { balance: Number(data.balance) || 0 } : {}),
+      updatedAt: now,
+    };
+    repository.updateAccount(id, sanitizedData);
 
     set((state) => ({
       accounts: state.accounts.map((a) =>
-        a.id === id ? { ...a, ...data, updatedAt: now } : a
+        a.id === id ? { ...a, ...sanitizedData } : a
       ),
     }));
   },
@@ -81,7 +86,8 @@ export const useAccountStore = create<AccountState>((set, get) => ({
     const account = get().accounts.find((a) => a.id === id);
     if (!account) return;
 
-    const newBalance = account.balance + delta;
+    const currentBalance = Number(account.balance) || 0;
+    const newBalance = currentBalance + Number(delta);
     get().updateAccount(id, { balance: newBalance });
   },
 

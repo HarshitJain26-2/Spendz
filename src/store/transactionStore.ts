@@ -34,13 +34,21 @@ interface TransactionState {
   searchTransactions: (query: string) => Transaction[];
 }
 
+const sortTransactions = (list: Transaction[]): Transaction[] => {
+  return [...list].sort((a, b) => {
+    const diff = new Date(b.date).getTime() - new Date(a.date).getTime();
+    if (diff !== 0) return diff;
+    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+  });
+};
+
 export const useTransactionStore = create<TransactionState>((set, get) => ({
   transactions: [],
   isLoading: false,
 
   loadTransactions: () => {
     try {
-      const transactions = repository.getTransactions();
+      const transactions = sortTransactions(repository.getTransactions());
       set({ transactions });
     } catch (e) {
       console.error('Failed to load transactions:', e);
@@ -49,10 +57,11 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
 
   addTransaction: (data) => {
     const now = getTodayISO();
+    const amount = Number(data.amount) || 0;
     const transaction: Transaction = {
       id: generateId(),
       type: data.type,
-      amount: data.amount,
+      amount,
       categoryId: data.categoryId,
       accountId: data.accountId,
       toAccountId: data.toAccountId || null,
@@ -80,22 +89,22 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       const accountStore = useAccountStore.getState();
       switch (data.type) {
         case 'expense':
-          accountStore.updateBalance(data.accountId, -data.amount);
+          accountStore.updateBalance(data.accountId, -amount);
           break;
         case 'income':
-          accountStore.updateBalance(data.accountId, data.amount);
+          accountStore.updateBalance(data.accountId, amount);
           break;
         case 'transfer':
           if (data.toAccountId) {
-            accountStore.updateBalance(data.accountId, -data.amount);
-            accountStore.updateBalance(data.toAccountId, data.amount);
+            accountStore.updateBalance(data.accountId, -amount);
+            accountStore.updateBalance(data.toAccountId, amount);
           }
           break;
       }
     }
 
     set((state) => ({
-      transactions: [transaction, ...state.transactions],
+      transactions: sortTransactions([transaction, ...state.transactions]),
     }));
 
     return transaction;
@@ -133,9 +142,15 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       }
     }
 
-    const updated = { ...existing, ...data, updatedAt: now };
+    const sanitizedData = {
+      ...data,
+      ...(data.amount !== undefined ? { amount: Number(data.amount) || 0 } : {}),
+      updatedAt: now,
+    };
 
-    repository.updateTransaction(id, { ...data, updatedAt: now });
+    const updated = { ...existing, ...sanitizedData };
+
+    repository.updateTransaction(id, sanitizedData);
 
     // Apply new balance effect only if not skipped (e.g. friend paid)
     if (!options?.skipBalanceUpdate) {
@@ -156,8 +171,8 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     }
 
     set((state) => ({
-      transactions: state.transactions.map((t) =>
-        t.id === id ? updated : t
+      transactions: sortTransactions(
+        state.transactions.map((t) => (t.id === id ? updated : t))
       ),
     }));
   },
@@ -188,12 +203,8 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       }
     }
 
-    // Immediately update splitStore in-memory state if there is a linked split
-    if (split) {
-      useSplitStore.setState((state) => ({
-        splitExpenses: state.splitExpenses.filter((s) => s.transactionId !== id),
-      }));
-    }
+    // Always unconditionally remove any linked split from splitStore
+    useSplitStore.getState().deleteSplitByTransactionId(id);
 
     repository.deleteTransaction(id);
 
