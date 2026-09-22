@@ -199,6 +199,17 @@ export const repository: DatabaseRepository = {
     const friends = getStorage<Friend[]>(STORAGE_KEYS.FRIENDS, []);
     const updated = friends.map((f) => (f.id === id ? { ...f, ...data } : f));
     setStorage(STORAGE_KEYS.FRIENDS, updated);
+
+    if (data.name) {
+      const participants = getStorage<SplitParticipant[]>(
+        STORAGE_KEYS.PARTICIPANTS,
+        []
+      );
+      const updatedParticipants = participants.map((p) =>
+        p.friendId === id ? { ...p, name: data.name! } : p
+      );
+      setStorage(STORAGE_KEYS.PARTICIPANTS, updatedParticipants);
+    }
   },
 
   deleteFriend(id: string) {

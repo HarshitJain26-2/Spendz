@@ -288,6 +288,13 @@ export const repository: DatabaseRepository = {
       .set(data as any)
       .where(eq(schema.friends.id, id))
       .run();
+
+    if (data.name) {
+      db.update(schema.splitParticipants)
+        .set({ name: data.name })
+        .where(eq(schema.splitParticipants.friendId, id))
+        .run();
+    }
   },
 
   deleteFriend(id: string) {
