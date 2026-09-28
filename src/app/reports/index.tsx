@@ -203,21 +203,26 @@ export default function ReportsScreen() {
 
   // Current Balances Snapshot (As of Today)
   const currentAccountsSnapshot = useMemo(() => {
-    return accounts.map((a) => ({
-      name: a.name,
-      type: a.type,
-      balance: a.balance,
-    }));
+    return (accounts || [])
+      .filter((a): a is (typeof accounts)[number] => Boolean(a))
+      .map((a, index) => ({
+        id: a.id || `account-fallback-${index}`,
+        name: a.name ?? 'Unnamed Account',
+        type: a.type ?? 'custom',
+        balance: Number(a.balance) || 0,
+      }));
   }, [accounts]);
 
   const totalCurrentBalance = useMemo(() => {
-    return accounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+    return (accounts || []).reduce((sum, a) => sum + (Number(a?.balance) || 0), 0);
   }, [accounts]);
 
   const currentFriendBalancesSnapshot = useMemo(() => {
-    return friends
-      .map((f) => ({
-        friendName: f.name,
+    return (friends || [])
+      .filter((f): f is (typeof friends)[number] => Boolean(f))
+      .map((f, index) => ({
+        friendId: f.id || `friend-fallback-${index}`,
+        friendName: f.name ?? 'Unnamed Friend',
         balance: getFriendBalance(f.id),
       }))
       .filter((f) => f.balance !== 0);
@@ -631,31 +636,42 @@ export default function ReportsScreen() {
 
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-          {currentAccountsSnapshot.map((acc, index) => (
-            <View key={acc.name}>
-              <View style={styles.snapshotRow}>
-                <Text style={[styles.snapshotItemName, { color: colors.textPrimary }]}>
-                  {acc.name}{' '}
-                  <Text style={[styles.snapshotItemType, { color: colors.textTertiary }]}>
-                    ({acc.type})
-                  </Text>
-                </Text>
-                <Text
-                  style={[
-                    styles.snapshotItemAmount,
-                    {
-                      color: acc.balance >= 0 ? colors.textPrimary : colors.expense,
-                    },
-                  ]}
-                >
-                  {formatCurrency(acc.balance)}
-                </Text>
-              </View>
-              {index < currentAccountsSnapshot.length - 1 && (
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              )}
+          {currentAccountsSnapshot.length > 0 ? (
+            currentAccountsSnapshot.map((acc, index) => {
+              const accountKey = acc.id || `account-${index}-${acc.name}`;
+              return (
+                <View key={accountKey}>
+                  <View style={styles.snapshotRow}>
+                    <Text style={[styles.snapshotItemName, { color: colors.textPrimary }]}>
+                      {acc.name}{' '}
+                      <Text style={[styles.snapshotItemType, { color: colors.textTertiary }]}>
+                        ({acc.type})
+                      </Text>
+                    </Text>
+                    <Text
+                      style={[
+                        styles.snapshotItemAmount,
+                        {
+                          color: acc.balance >= 0 ? colors.textPrimary : colors.expense,
+                        },
+                      ]}
+                    >
+                      {formatCurrency(acc.balance)}
+                    </Text>
+                  </View>
+                  {index < currentAccountsSnapshot.length - 1 && (
+                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  )}
+                </View>
+              );
+            })
+          ) : (
+            <View style={styles.emptyCardBox}>
+              <Text style={[styles.emptyCardText, { color: colors.textTertiary }]}>
+                No accounts available.
+              </Text>
             </View>
-          ))}
+          )}
         </Card>
 
         {/* Friend Balances Snapshot */}
@@ -673,11 +689,12 @@ export default function ReportsScreen() {
 
           {currentFriendBalancesSnapshot.length > 0 ? (
             currentFriendBalancesSnapshot.map((f, index) => {
+              const friendKey = f.friendId || `friend-${index}-${f.friendName}`;
               const owesYou = f.balance > 0;
               const statusColor = owesYou ? colors.income : colors.expense;
               const statusLabel = owesYou ? 'owes you' : 'you owe';
               return (
-                <View key={f.friendName}>
+                <View key={friendKey}>
                   <View style={styles.snapshotRow}>
                     <Text style={[styles.snapshotItemName, { color: colors.textPrimary }]}>
                       {f.friendName}

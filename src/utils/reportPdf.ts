@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import type {
   Transaction,
   Account,
@@ -38,6 +39,7 @@ export interface ReportData {
 
   // Snapshots as of today
   currentAccounts: Array<{
+    id?: string;
     name: string;
     type: string;
     balance: number;
@@ -45,6 +47,7 @@ export interface ReportData {
   totalCurrentBalance: number;
 
   currentFriendBalances: Array<{
+    friendId?: string;
     friendName: string;
     balance: number; // positive = owes you, negative = you owe
   }>;
@@ -493,20 +496,53 @@ export async function exportReportToPdf(reportData: ReportData): Promise<{ succe
       await Print.printAsync({ html });
       return { success: true };
     } else {
-      // On Android / iOS, generate PDF file in cache
-      const { uri } = await Print.printToFileAsync({ html });
+      // On Android / iOS, generate PDF file in cache with base64 content
+      const { uri, base64 } = await Print.printToFileAsync({ html, base64: true });
+
+      // Generate a clean filename for sharing
+      const sanitizedPeriod = (reportData.periodLabel || 'Report')
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .replace(/_+/g, '_');
+      const filename = `Spendz_Report_${sanitizedPeriod}.pdf`;
+
+      let shareableUri = uri;
+
+      // In Android / Expo Go, Print.printToFileAsync places files in unscoped cache,
+      // which ExpoSharing rejects with "Not allowed to read file under given URL".
+      // Writing the file to the app's accessible documentDirectory or cacheDirectory
+      // grants full internal read permission to the sharing intent.
+      try {
+        const targetDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+        if (targetDir) {
+          const targetUri = `${targetDir}${filename}`;
+          if (base64) {
+            await FileSystem.writeAsStringAsync(targetUri, base64, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            shareableUri = targetUri;
+          } else {
+            await FileSystem.copyAsync({
+              from: uri,
+              to: targetUri,
+            });
+            shareableUri = targetUri;
+          }
+        }
+      } catch (fsErr) {
+        console.warn('Could not relocate PDF to app storage, attempting direct share:', fsErr);
+      }
 
       // Check if sharing is available
       const isAvailable = await Sharing.isAvailableAsync();
       if (isAvailable) {
-        await Sharing.shareAsync(uri, {
+        await Sharing.shareAsync(shareableUri, {
           mimeType: 'application/pdf',
           dialogTitle: `Export Spendz Report - ${reportData.periodLabel}`,
           UTI: 'com.adobe.pdf',
         });
       }
 
-      return { success: true, uri };
+      return { success: true, uri: shareableUri };
     }
   } catch (error) {
     console.error('Failed to generate or share PDF report:', error);

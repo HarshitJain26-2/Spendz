@@ -15,8 +15,13 @@ import { typography } from '@/theme/typography';
 import { spacing, borderRadius, shadows } from '@/theme/spacing';
 import type { Friend } from '@/types';
 
+const isFabric = Boolean(
+  (globalThis as any).nativeFabricUIManager || (globalThis as any)._IS_FABRIC
+);
+
 if (
   Platform.OS === 'android' &&
+  !isFabric &&
   UIManager.setLayoutAnimationEnabledExperimental
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
