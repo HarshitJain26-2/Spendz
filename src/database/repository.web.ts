@@ -354,13 +354,27 @@ export const repository: DatabaseRepository = {
     const themeModeStr = this.getSetting('themeMode');
     const userNameStr = this.getSetting('userName');
     const currencyStr = this.getSetting('currency');
+    const profileIdStr = this.getSetting('profileId');
+    const profileEmailStr = this.getSetting('profileEmail');
+    const profilePhoneStr = this.getSetting('profilePhone');
+    const profileAvatarStr = this.getSetting('profileAvatar');
+    const profileCreatedAtStr = this.getSetting('profileCreatedAt');
+    const profileUpdatedAtStr = this.getSetting('profileUpdatedAt');
 
+    const name = userNameStr || '';
     return {
       hasOnboarded: hasOnboardedStr === 'true',
       themeMode: (themeModeStr as any) || 'light',
       userProfile: {
-        name: userNameStr || '',
+        id: profileIdStr || 'user_spendz',
+        name,
+        fullName: name,
+        email: profileEmailStr || '',
+        phone: profilePhoneStr || '',
+        avatarUri: profileAvatarStr || null,
         currency: currencyStr || '₹',
+        createdAt: profileCreatedAtStr || '',
+        updatedAt: profileUpdatedAtStr || '',
       },
     };
   },
@@ -373,11 +387,31 @@ export const repository: DatabaseRepository = {
       this.setSetting('themeMode', settings.themeMode);
     }
     if (settings.userProfile) {
-      if (settings.userProfile.name !== undefined) {
-        this.setSetting('userName', settings.userProfile.name);
+      const p = settings.userProfile;
+      const name = p.fullName !== undefined ? p.fullName : p.name;
+      if (name !== undefined) {
+        this.setSetting('userName', name);
       }
-      if (settings.userProfile.currency !== undefined) {
-        this.setSetting('currency', settings.userProfile.currency);
+      if (p.email !== undefined) {
+        this.setSetting('profileEmail', p.email);
+      }
+      if (p.phone !== undefined) {
+        this.setSetting('profilePhone', p.phone);
+      }
+      if (p.avatarUri !== undefined) {
+        this.setSetting('profileAvatar', p.avatarUri || '');
+      }
+      if (p.currency !== undefined) {
+        this.setSetting('currency', p.currency);
+      }
+      if (p.id !== undefined) {
+        this.setSetting('profileId', p.id);
+      }
+      if (p.createdAt !== undefined) {
+        this.setSetting('profileCreatedAt', p.createdAt);
+      }
+      if (p.updatedAt !== undefined) {
+        this.setSetting('profileUpdatedAt', p.updatedAt);
       }
     }
   },

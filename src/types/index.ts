@@ -90,9 +90,17 @@ export interface SplitParticipant {
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 export interface UserProfile {
+  id?: string;
   name: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  avatarUri?: string | null;
   currency: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
+
 
 // ─── Utility Types ───────────────────────────────────────────────────
 export interface MonthSummary {

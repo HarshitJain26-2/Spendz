@@ -53,11 +53,33 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   userProfile: {
+    id: 'user_spendz',
     name: '',
+    fullName: '',
+    email: '',
+    phone: '',
+    avatarUri: null,
     currency: '₹',
+    createdAt: '',
+    updatedAt: '',
   },
   setUserProfile: (profile) => {
-    const updated = { ...get().userProfile, ...profile };
+    const prev = get().userProfile;
+    const now = new Date().toISOString();
+    const resolvedName =
+      profile.fullName !== undefined
+        ? profile.fullName
+        : profile.name !== undefined
+        ? profile.name
+        : prev.name;
+    const updated: UserProfile = {
+      ...prev,
+      ...profile,
+      name: resolvedName,
+      fullName: resolvedName,
+      createdAt: prev.createdAt || now,
+      updatedAt: now,
+    };
     try {
       repository.saveAppSettings({ userProfile: updated });
     } catch (e) {
@@ -80,10 +102,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
 
+      const now = new Date().toISOString();
+      const loadedProfile = settings.userProfile || { name: '', currency: '₹' };
+      const resolvedName = loadedProfile.fullName || loadedProfile.name || '';
+      const finalProfile: UserProfile = {
+        id: loadedProfile.id || 'user_spendz',
+        name: resolvedName,
+        fullName: resolvedName,
+        email: loadedProfile.email || '',
+        phone: loadedProfile.phone || '',
+        avatarUri: loadedProfile.avatarUri || null,
+        currency: loadedProfile.currency || '₹',
+        createdAt: loadedProfile.createdAt || now,
+        updatedAt: loadedProfile.updatedAt || now,
+      };
+
       set({
         hasOnboarded,
         themeMode: settings.themeMode || 'light',
-        userProfile: settings.userProfile || { name: '', currency: '₹' },
+        userProfile: finalProfile,
       });
     } catch (e) {
       console.error('Failed to load app settings:', e);
