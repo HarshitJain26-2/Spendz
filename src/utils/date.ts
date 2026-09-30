@@ -118,6 +118,68 @@ export const getCurrentMonthRange = (): { start: Date; end: Date } => {
 };
 
 /**
+ * Safely parse a stored transaction date string into a local Date.
+ * Date-only strings ("2026-09-29") are anchored to local noon to avoid
+ * timezone shifts that would move the date by a day.
+ */
+export const parseDateLocal = (dateString: string): Date => {
+  const trimmed = (dateString || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [y, m, d] = trimmed.split('-').map(Number);
+    return new Date(y, m - 1, d, 12, 0, 0, 0);
+  }
+  const parsed = new Date(trimmed);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+
+/**
+ * Format a date's local time as "7:30 PM"
+ */
+export const formatTimeLabel = (date: Date): string => {
+  return date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+
+/**
+ * Replace only the calendar date of `base`, preserving its local time.
+ * Returns a full ISO string with the original time intact.
+ */
+export const combineDateInto = (base: string, picked: Date): string => {
+  const current = parseDateLocal(base);
+  const next = new Date(
+    picked.getFullYear(),
+    picked.getMonth(),
+    picked.getDate(),
+    current.getHours(),
+    current.getMinutes(),
+    current.getSeconds(),
+    current.getMilliseconds()
+  );
+  return next.toISOString();
+};
+
+/**
+ * Replace only the time of `base`, preserving its local calendar date.
+ * Returns a full ISO string with the original date intact.
+ */
+export const combineTimeInto = (base: string, picked: Date): string => {
+  const current = parseDateLocal(base);
+  const next = new Date(
+    current.getFullYear(),
+    current.getMonth(),
+    current.getDate(),
+    picked.getHours(),
+    picked.getMinutes(),
+    picked.getSeconds(),
+    0
+  );
+  return next.toISOString();
+};
+
+/**
  * Get ISO date string for today
  */
 export const getTodayISO = (): string => {

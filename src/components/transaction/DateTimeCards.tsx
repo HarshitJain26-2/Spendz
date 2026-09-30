@@ -8,15 +8,18 @@ import {
 } from 'react-native';
 import { Calendar, Clock } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
+import { parseDateLocal } from '@/utils/date';
 import { typography } from '@/theme/typography';
 import { borderRadius, spacing } from '@/theme/spacing';
 
 interface DateTimeCardsProps {
-  date: string; // ISO date string YYYY-MM-DD
+  date: string; // ISO date string YYYY-MM-DD or full ISO datetime
   time?: string; // e.g. "08:42 PM"
   onChangeDate?: (date: string) => void;
   onDatePress?: () => void;
   onTimePress?: () => void;
+  /** When false, tapping DATE only fires onDatePress (no Today/Yesterday toggle) */
+  quickDateToggle?: boolean;
   style?: ViewStyle;
 }
 
@@ -26,14 +29,15 @@ export const DateTimeCards: React.FC<DateTimeCardsProps> = ({
   onChangeDate,
   onDatePress,
   onTimePress,
+  quickDateToggle = true,
   style,
 }) => {
   const { colors } = useTheme();
 
-  // Format date display: "Today, Sep 15" or "Yesterday, Sep 14" or "Sep 15"
+  // Format date display: "Today, Sep 15" or "Yesterday, Sep 14" or "Sep 15" (adds year when different)
   const getFormattedDate = () => {
     try {
-      const target = new Date(date);
+      const target = parseDateLocal(date);
       const today = new Date();
       const isToday =
         target.getDate() === today.getDate() &&
@@ -49,10 +53,14 @@ export const DateTimeCards: React.FC<DateTimeCardsProps> = ({
 
       const monthName = target.toLocaleDateString('en-US', { month: 'short' });
       const day = target.getDate();
+      const yearSuffix =
+        target.getFullYear() !== today.getFullYear()
+          ? ` ${target.getFullYear()}`
+          : '';
 
       if (isToday) return `Today, ${monthName} ${day}`;
       if (isYesterday) return `Yesterday, ${monthName} ${day}`;
-      return `${monthName} ${day}`;
+      return `${monthName} ${day}${yearSuffix}`;
     } catch {
       return 'Today';
     }
@@ -77,12 +85,14 @@ export const DateTimeCards: React.FC<DateTimeCardsProps> = ({
         onPress={() => {
           onDatePress?.();
           // Toggle Today / Yesterday on quick tap if simple
-          if (onChangeDate) {
+          if (onChangeDate && quickDateToggle) {
             const todayISO = new Date().toISOString().split('T')[0];
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             const yesterdayISO = yesterday.toISOString().split('T')[0];
-            onChangeDate(date === todayISO ? yesterdayISO : todayISO);
+            const target = parseDateLocal(date);
+            const currentDateOnly = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+            onChangeDate(currentDateOnly === todayISO ? yesterdayISO : todayISO);
           }
         }}
         style={[

@@ -51,7 +51,10 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({
   };
 
   const getDisplayInfo = () => {
-    const timeStr = formatTransactionTime(transaction.createdAt || transaction.date);
+    // `date` is the canonical, user-editable transaction datetime; fall back to
+    // `createdAt` only for malformed records. Using `date` ensures edits to the
+    // transaction time propagate live to the Activity list and Home recents.
+    const timeStr = formatTransactionTime(transaction.date || transaction.createdAt);
     const subTime = timeStr ? ` · ${timeStr}` : '';
 
     switch (transaction.type) {

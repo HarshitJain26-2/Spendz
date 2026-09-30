@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { DateTimePickerField } from '@/components/transaction/DateTimePickerField';
 import { ArrowLeft, Check, Users } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { AmountInput } from '@/components/ui/AmountInput';
@@ -27,7 +28,14 @@ import { useAccountStore } from '@/store/accountStore';
 import { useSplitStore } from '@/store/splitStore';
 import { useFriendStore } from '@/store/friendStore';
 import type { PaidByType, SplitParticipant } from '@/types';
-import { getTodayISO, generateId } from '@/utils/date';
+import {
+  getTodayISO,
+  generateId,
+  parseDateLocal,
+  formatTimeLabel,
+  combineDateInto,
+  combineTimeInto,
+} from '@/utils/date';
 import { calculateEqualSplit } from '@/utils/calculations';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius, shadows } from '@/theme/spacing';
@@ -59,11 +67,15 @@ export default function EditTransactionScreen() {
   const [accountId, setAccountId] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(getTodayISO());
+  const [picker, setPicker] = useState<'date' | 'time' | null>(null);
   const [paidByType, setPaidByType] = useState<PaidByType>('me');
   const [paidByFriendId, setPaidByFriendId] = useState<string | null>(null);
   const [isMeSelected, setIsMeSelected] = useState(true);
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
 
+  // Seed the form only when the target transaction id changes, so that
+  // unrelated store updates never clobber unsaved edits.
+  const transactionId = transaction?.id;
   useEffect(() => {
     if (transaction) {
       setAmount(transaction.amount.toString());
@@ -72,7 +84,8 @@ export default function EditTransactionScreen() {
       setNote(transaction.note || '');
       setDate(transaction.date || getTodayISO());
     }
-  }, [transaction]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactionId]);
 
   useEffect(() => {
     if (splitExpense) {
@@ -119,6 +132,20 @@ export default function EditTransactionScreen() {
   }, [accounts, accountId, transaction]);
 
   const effectiveAccountId = accountId || transaction?.accountId || accounts[0]?.id || '';
+
+  // Full datetime currently being edited (date + time in one ISO string)
+  const currentDateTime = useMemo(() => parseDateLocal(date), [date]);
+
+  // Combine the picked value with the existing datetime so that changing the
+  // date preserves the time, and changing the time preserves the date.
+  const handlePicked = (picked: Date) => {
+    setDate((prev) =>
+      picker === 'date'
+        ? combineDateInto(prev, picked)
+        : combineTimeInto(prev, picked)
+    );
+    setPicker(null);
+  };
 
   const syncPayer = (_newMeSelected: boolean, newFriendIds: string[]) => {
     if (paidByType === 'me') {
@@ -552,12 +579,23 @@ export default function EditTransactionScreen() {
             />
           )}
 
-          {/* Date Selector */}
+          {/* Date & Time Selector (native pickers) */}
           <DateTimeCards
             date={date}
-            onChangeDate={setDate}
-            style={{ paddingHorizontal: spacing.xl, marginBottom: spacing.lg }}
+            time={formatTimeLabel(currentDateTime)}
+            quickDateToggle={false}
+            onDatePress={() => setPicker('date')}
+            onTimePress={() => setPicker('time')}
+            style={{ marginBottom: spacing.lg }}
           />
+          {picker !== null && (
+            <DateTimePickerField
+              mode={picker}
+              value={currentDateTime}
+              onCommit={handlePicked}
+              onClose={() => setPicker(null)}
+            />
+          )}
 
           {/* Note */}
           <View style={styles.noteContainer}>
