@@ -76,8 +76,9 @@ export default function HomeScreen() {
     [transactions]
   );
 
-  const greeting = userProfile.name
-    ? `Hey, ${userProfile.name} 👋`
+  const displayName = userProfile.fullName || userProfile.name;
+  const greeting = displayName
+    ? `Hey, ${displayName} 👋`
     : 'Hey there 👋';
 
   return (
@@ -114,7 +115,16 @@ export default function HomeScreen() {
           >
             <Settings size={18} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Avatar name={userProfile.name || 'You'} size={36} />
+          <TouchableOpacity
+            onPress={() => router.push('/profile' as any)}
+            activeOpacity={0.7}
+          >
+            <Avatar
+              name={displayName || 'You'}
+              avatarUri={userProfile.avatarUri}
+              size={36}
+            />
+          </TouchableOpacity>
         </View>
       </View>
 

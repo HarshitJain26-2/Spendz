@@ -133,7 +133,16 @@ export default function FriendsScreen() {
           >
             <Bell size={18} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Avatar name={userProfile.name || 'You'} size={36} />
+          <TouchableOpacity
+            onPress={() => router.push('/profile' as any)}
+            activeOpacity={0.7}
+          >
+            <Avatar
+              name={userProfile.fullName || userProfile.name || 'You'}
+              avatarUri={userProfile.avatarUri}
+              size={36}
+            />
+          </TouchableOpacity>
         </View>
       </View>
 

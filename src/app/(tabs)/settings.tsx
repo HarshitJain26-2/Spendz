@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,10 +13,8 @@ import {
   Wallet,
   Tag,
   Palette,
-  User,
   ChevronRight,
   RotateCcw,
-  Check,
   FileText,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
@@ -37,18 +34,11 @@ export default function SettingsScreen() {
   const bottomTabInset = useBottomTabInset(spacing.lg);
 
   const userProfile = useAppStore((s) => s.userProfile);
-  const setUserProfile = useAppStore((s) => s.setUserProfile);
   const themeMode = useAppStore((s) => s.themeMode);
   const accounts = useAccountStore((s) => s.accounts);
   const categories = useCategoryStore((s) => s.categories);
 
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [userName, setUserName] = useState(userProfile.name || '');
-
-  const handleSaveName = () => {
-    setUserProfile({ name: userName.trim() });
-    setIsEditingName(false);
-  };
+  const displayName = (userProfile.fullName || userProfile.name || '').trim();
 
   const getThemeLabel = () => {
     switch (themeMode) {
@@ -103,7 +93,16 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <Avatar name={userProfile.name || 'You'} size={36} />
+        <TouchableOpacity
+          onPress={() => router.push('/profile' as any)}
+          activeOpacity={0.7}
+        >
+          <Avatar
+            name={displayName || 'You'}
+            avatarUri={userProfile.avatarUri}
+            size={36}
+          />
+        </TouchableOpacity>
       </View>
 
       {/* 2. Page Title Row */}
@@ -121,65 +120,35 @@ export default function SettingsScreen() {
         ]}
       >
         {/* Profile Card */}
-        <Card style={styles.profileCard} padding="md">
+        <Card
+          style={styles.profileCard}
+          padding="md"
+          onPress={() => router.push('/profile' as any)}
+          activeOpacity={0.7}
+        >
           <View style={styles.profileRow}>
-            <View
-              style={[
-                styles.iconContainer,
-                { backgroundColor: colors.accentLight },
-              ]}
-            >
-              <User size={22} color={colors.accent} strokeWidth={2.2} />
-            </View>
+            <Avatar
+              name={displayName || 'You'}
+              avatarUri={userProfile.avatarUri}
+              size={48}
+            />
 
             <View style={styles.profileInfo}>
-              {isEditingName ? (
-                <View style={styles.nameEditRow}>
-                  <TextInput
-                    value={userName}
-                    onChangeText={setUserName}
-                    placeholder="Your Name"
-                    placeholderTextColor={colors.textTertiary}
-                    style={[
-                      styles.nameInput,
-                      { color: colors.textPrimary, borderColor: colors.accent },
-                    ]}
-                    autoFocus
-                  />
-                  <TouchableOpacity
-                    onPress={handleSaveName}
-                    style={[
-                      styles.saveBtn,
-                      { backgroundColor: colors.accent },
-                    ]}
-                  >
-                    <Check size={16} color="#000000" strokeWidth={2.4} />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  onPress={() => {
-                    setUserName(userProfile.name || '');
-                    setIsEditingName(true);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[styles.profileName, { color: colors.textPrimary }]}
-                  >
-                    {userProfile.name || 'Set your name'}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.profileSub,
-                      { color: colors.textTertiary },
-                    ]}
-                  >
-                    Tap to edit profile
-                  </Text>
-                </TouchableOpacity>
-              )}
+              <Text
+                style={[styles.profileName, { color: colors.textPrimary }]}
+                numberOfLines={1}
+              >
+                {displayName || 'Your Profile'}
+              </Text>
+              <Text
+                style={[styles.profileSub, { color: colors.textTertiary }]}
+                numberOfLines={1}
+              >
+                {userProfile.email || (userProfile.phone ? userProfile.phone : 'Tap to view & edit profile')}
+              </Text>
             </View>
+
+            <ChevronRight size={20} color={colors.textTertiary} />
           </View>
         </Card>
 

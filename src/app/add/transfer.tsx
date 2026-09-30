@@ -260,7 +260,11 @@ export default function AddTransferScreen() {
             </Text>
           </View>
 
-          <Avatar name={userProfile.name || 'You'} size={36} />
+          <Avatar
+            name={userProfile.fullName || userProfile.name || 'You'}
+            avatarUri={userProfile.avatarUri}
+            size={36}
+          />
         </View>
 
         <ScrollView
