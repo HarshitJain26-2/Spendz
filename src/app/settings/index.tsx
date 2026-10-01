@@ -10,15 +10,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
+  ArrowLeft,
   Wallet,
   Tag,
   Palette,
   ChevronRight,
   RotateCcw,
   FileText,
+  User,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
-import { useBottomTabInset } from '@/hooks/useBottomTabInset';
 import { useAppStore } from '@/store/appStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useCategoryStore } from '@/store/categoryStore';
@@ -31,7 +32,6 @@ import { showAlert } from '@/utils/alert';
 export default function SettingsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const bottomTabInset = useBottomTabInset(spacing.lg);
 
   const userProfile = useAppStore((s) => s.userProfile);
   const themeMode = useAppStore((s) => s.themeMode);
@@ -75,24 +75,21 @@ export default function SettingsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={['top', 'left', 'right']}
     >
-      {/* 1. App Top Header */}
+      {/* 1. Header with Back Button */}
       <View style={styles.header}>
-        <View style={styles.logoGroup}>
-          <Image
-            source={require('@/assets/images/spendz-logo.png')}
-            style={styles.logoBadge}
-            resizeMode="contain"
-          />
-          <View>
-            <Text style={[styles.brandName, { color: colors.textPrimary }]}>
-              Spendz
-            </Text>
-            <Text style={[styles.brandSubtitle, { color: colors.textTertiary }]}>
-              Settings
-            </Text>
-          </View>
-        </View>
-
+        <TouchableOpacity
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          style={[
+            styles.backButton,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <ArrowLeft size={20} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
+          Settings
+        </Text>
         <TouchableOpacity
           onPress={() => router.push('/profile' as any)}
           activeOpacity={0.7}
@@ -105,19 +102,9 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 2. Page Title Row */}
-      <View style={styles.titleRow}>
-        <Text style={[styles.pageTitle, { color: colors.textPrimary }]}>
-          Settings
-        </Text>
-      </View>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: bottomTabInset },
-        ]}
+        contentContainerStyle={styles.scrollContent}
       >
         {/* Profile Card */}
         <Card
@@ -261,11 +248,16 @@ export default function SettingsScreen() {
             </View>
             <ChevronRight size={18} color={colors.textTertiary} />
           </TouchableOpacity>
+        </Card>
 
-          <View
-            style={[styles.divider, { backgroundColor: colors.border }]}
-          />
+        {/* Section: DATA & SYSTEM */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+            DATA & SYSTEM
+          </Text>
+        </View>
 
+        <Card padding="none" style={styles.groupedCard}>
           {/* Reports & Export */}
           <TouchableOpacity
             onPress={() => router.push('/reports' as any)}
@@ -276,7 +268,7 @@ export default function SettingsScreen() {
               <View
                 style={[
                   styles.iconContainer,
-                  { backgroundColor: colors.accentLight },
+                  { backgroundColor: colors.surfaceElevated },
                 ]}
               >
                 <FileText size={20} color={colors.accent} strokeWidth={2} />
@@ -285,27 +277,23 @@ export default function SettingsScreen() {
                 <Text
                   style={[styles.menuTitle, { color: colors.textPrimary }]}
                 >
-                  Reports & Export
+                  Financial Reports
                 </Text>
                 <Text
                   style={[styles.menuSub, { color: colors.textTertiary }]}
                 >
-                  Export your spending data
+                  Generate statements & export CSV
                 </Text>
               </View>
             </View>
             <ChevronRight size={18} color={colors.textTertiary} />
           </TouchableOpacity>
-        </Card>
 
-        {/* Section: DATA & STORAGE */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            DATA & BACKUP
-          </Text>
-        </View>
+          <View
+            style={[styles.divider, { backgroundColor: colors.border }]}
+          />
 
-        <Card padding="none" style={styles.groupedCard}>
+          {/* Reset All Data */}
           <TouchableOpacity
             onPress={handleResetData}
             style={styles.menuRow}
@@ -315,19 +303,21 @@ export default function SettingsScreen() {
               <View
                 style={[
                   styles.iconContainer,
-                  { backgroundColor: colors.expenseLight },
+                  { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
                 ]}
               >
-                <RotateCcw size={18} color={colors.expense} strokeWidth={2} />
+                <RotateCcw size={20} color={colors.expense} strokeWidth={2} />
               </View>
               <View>
-                <Text style={[styles.menuTitle, { color: colors.expense }]}>
+                <Text
+                  style={[styles.menuTitle, { color: colors.expense }]}
+                >
                   Reset All Data
                 </Text>
                 <Text
                   style={[styles.menuSub, { color: colors.textTertiary }]}
                 >
-                  Clear all local transactions and accounts
+                  Clear all local transactions and cache
                 </Text>
               </View>
             </View>
@@ -335,10 +325,10 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </Card>
 
-        {/* Section: ABOUT */}
+        {/* Section: APP INFO */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            ABOUT
+            APP INFO
           </Text>
         </View>
 
@@ -349,7 +339,7 @@ export default function SettingsScreen() {
               style={styles.aboutLogo}
               resizeMode="contain"
             />
-            <View style={styles.aboutText}>
+            <View style={styles.aboutInfo}>
               <Text
                 style={[styles.menuTitle, { color: colors.textPrimary }]}
               >
@@ -358,7 +348,12 @@ export default function SettingsScreen() {
               <Text
                 style={[styles.menuSub, { color: colors.textTertiary }]}
               >
-                Version 1.0.0 · Local-First Expense Tracker
+                Version 1.0.0 · Local-First Architecture
+              </Text>
+              <Text
+                style={[styles.aboutHint, { color: colors.textTertiary }]}
+              >
+                Your data is stored privately on this device.
               </Text>
             </View>
           </View>
@@ -380,136 +375,108 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
   },
-  logoGroup: {
-    flexDirection: 'row',
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'center',
   },
-  logoBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-  },
-  brandName: {
+  headerTitle: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 16,
-    lineHeight: 20,
-  },
-  brandSubtitle: {
-    fontFamily: typography.fontFamily.medium,
-    fontSize: 11,
-    lineHeight: 14,
-  },
-  titleRow: {
-    paddingHorizontal: spacing.xl,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  pageTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 26,
-    letterSpacing: -0.5,
+    fontSize: 20,
+    letterSpacing: -0.3,
   },
   scrollContent: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xs,
-    gap: spacing.md,
+    paddingBottom: spacing['4xl'],
   },
   profileCard: {
-    marginBottom: spacing.xs,
+    borderRadius: borderRadius.xl,
+    marginBottom: spacing.md,
   },
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-  },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   profileInfo: {
     flex: 1,
+    marginLeft: spacing.md,
   },
   profileName: {
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: 16,
+    fontSize: typography.fontSize.body,
     marginBottom: 2,
   },
   profileSub: {
     fontFamily: typography.fontFamily.regular,
-    fontSize: 12,
-  },
-  nameEditRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  nameInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    fontSize: 15,
-  },
-  saveBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    fontSize: typography.fontSize.caption,
   },
   sectionHeader: {
-    marginTop: spacing.xs,
-    marginBottom: -spacing.xs,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
   sectionTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 11,
-    letterSpacing: 0.8,
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: typography.fontSize.tiny,
+    letterSpacing: 1.2,
   },
   groupedCard: {
     borderRadius: borderRadius.xl,
+    overflow: 'hidden',
   },
   menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   menuLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
     flex: 1,
+  },
+  iconContainer: {
+    width: 38,
+    height: 38,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
   },
   menuTitle: {
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: 15,
+    fontSize: typography.fontSize.body,
     marginBottom: 2,
   },
   menuSub: {
     fontFamily: typography.fontFamily.regular,
-    fontSize: 12,
+    fontSize: typography.fontSize.caption,
   },
   divider: {
     height: 1,
-    marginLeft: 68,
+    marginLeft: spacing.lg + 38 + spacing.md,
   },
   aboutRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
   },
   aboutLogo: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 12,
+    marginRight: spacing.md,
   },
-  aboutText: {
+  aboutInfo: {
     flex: 1,
+  },
+  aboutHint: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 11,
+    marginTop: 2,
   },
 });

@@ -10,7 +10,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-  ArrowLeft,
   ChevronRight,
   User,
   Wallet,
@@ -22,10 +21,14 @@ import {
   Phone,
   Mail,
   Calendar,
+  Settings,
+  Tag,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
+import { useBottomTabInset } from '@/hooks/useBottomTabInset';
 import { useAppStore } from '@/store/appStore';
 import { useAccountStore } from '@/store/accountStore';
+import { useCategoryStore } from '@/store/categoryStore';
 import { useFriendStore } from '@/store/friendStore';
 import { useTransactionStore } from '@/store/transactionStore';
 import { Card } from '@/components/ui/Card';
@@ -34,14 +37,16 @@ import { Button } from '@/components/ui/Button';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
 
-export default function ProfileScreen() {
+export default function ProfileTabScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const bottomTabInset = useBottomTabInset(spacing.lg);
 
   // Stable selectors from Zustand stores
   const userProfile = useAppStore((s) => s.userProfile);
   const themeMode = useAppStore((s) => s.themeMode);
   const accounts = useAccountStore((s) => s.accounts);
+  const categories = useCategoryStore((s) => s.categories);
   const friends = useFriendStore((s) => s.friends);
   const transactions = useTransactionStore((s) => s.transactions);
 
@@ -65,27 +70,42 @@ export default function ProfileScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={['top', 'left', 'right']}
     >
-      {/* 1. Header: [Back] Profile */}
+      {/* 1. App Top Header (consistent with other tabs) */}
       <View style={styles.header}>
+        <View style={styles.logoGroup}>
+          <Image
+            source={require('@/assets/images/spendz-logo.png')}
+            style={styles.logoBadge}
+            resizeMode="contain"
+          />
+          <View>
+            <Text style={[styles.brandName, { color: colors.textPrimary }]}>
+              Spendz
+            </Text>
+            <Text style={[styles.brandSubtitle, { color: colors.textTertiary }]}>
+              Profile
+            </Text>
+          </View>
+        </View>
+
         <TouchableOpacity
-          onPress={() => router.back()}
-          activeOpacity={0.7}
+          onPress={() => router.push('/settings' as any)}
           style={[
-            styles.backButton,
+            styles.iconButton,
             { backgroundColor: colors.surface, borderColor: colors.border },
           ]}
+          activeOpacity={0.7}
         >
-          <ArrowLeft size={20} color={colors.textPrimary} />
+          <Settings size={18} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          Profile
-        </Text>
-        <View style={styles.headerRightPlaceholder} />
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: bottomTabInset },
+        ]}
       >
         {/* 2. Profile Hero Card */}
         <Card style={styles.heroCard} padding="lg">
@@ -265,10 +285,10 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </Card>
 
-        {/* SECTION 2: Money Preferences */}
+        {/* SECTION 2: Preferences & Management */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            MONEY PREFERENCES
+            PREFERENCES & MANAGEMENT
           </Text>
         </View>
 
@@ -297,7 +317,7 @@ export default function ProfileScreen() {
 
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-          {/* Default Account */}
+          {/* Accounts */}
           <TouchableOpacity
             onPress={() => router.push('/settings/accounts' as any)}
             style={styles.menuRow}
@@ -314,25 +334,47 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.menuTextGroup}>
                 <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>
-                  Default Account
+                  Accounts
                 </Text>
                 <Text style={[styles.menuSub, { color: colors.textTertiary }]}>
-                  {defaultAccount ? `${defaultAccount.name} (${defaultAccount.type})` : 'None configured'}
+                  {defaultAccount ? `${defaultAccount.name} (${defaultAccount.type}) · ${accounts.length} total` : `${accounts.length} active`}
                 </Text>
               </View>
             </View>
             <ChevronRight size={18} color={colors.textTertiary} />
           </TouchableOpacity>
-        </Card>
 
-        {/* SECTION 3: App Preferences */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            APP PREFERENCES
-          </Text>
-        </View>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-        <Card padding="none" style={styles.groupedCard}>
+          {/* Categories */}
+          <TouchableOpacity
+            onPress={() => router.push('/settings/categories' as any)}
+            style={styles.menuRow}
+            activeOpacity={0.7}
+          >
+            <View style={styles.menuLeft}>
+              <View
+                style={[
+                  styles.iconContainer,
+                  { backgroundColor: colors.surfaceElevated },
+                ]}
+              >
+                <Tag size={18} color={colors.accent} strokeWidth={2} />
+              </View>
+              <View style={styles.menuTextGroup}>
+                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>
+                  Categories
+                </Text>
+                <Text style={[styles.menuSub, { color: colors.textTertiary }]}>
+                  {categories.length} total categories
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={18} color={colors.textTertiary} />
+          </TouchableOpacity>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
           {/* Appearance */}
           <TouchableOpacity
             onPress={() => router.push('/settings/appearance' as any)}
@@ -361,14 +403,15 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </Card>
 
-        {/* SECTION 4: Data & Reports */}
+        {/* SECTION 3: Data & Settings */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            DATA & REPORTS
+            DATA & SETTINGS
           </Text>
         </View>
 
         <Card padding="none" style={styles.groupedCard}>
+          {/* Reports & Export */}
           <TouchableOpacity
             onPress={() => router.push('/reports' as any)}
             style={styles.menuRow}
@@ -394,9 +437,38 @@ export default function ProfileScreen() {
             </View>
             <ChevronRight size={18} color={colors.textTertiary} />
           </TouchableOpacity>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          {/* All App Settings */}
+          <TouchableOpacity
+            onPress={() => router.push('/settings' as any)}
+            style={styles.menuRow}
+            activeOpacity={0.7}
+          >
+            <View style={styles.menuLeft}>
+              <View
+                style={[
+                  styles.iconContainer,
+                  { backgroundColor: colors.surfaceElevated },
+                ]}
+              >
+                <Settings size={18} color={colors.accent} strokeWidth={2} />
+              </View>
+              <View style={styles.menuTextGroup}>
+                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>
+                  All App Settings
+                </Text>
+                <Text style={[styles.menuSub, { color: colors.textTertiary }]}>
+                  Manage preferences, backup & reset data
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={18} color={colors.textTertiary} />
+          </TouchableOpacity>
         </Card>
 
-        {/* SECTION 5: About */}
+        {/* SECTION 4: About */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
             ABOUT
@@ -445,7 +517,27 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
   },
-  backButton: {
+  logoGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  logoBadge: {
+    width: 32,
+    height: 32,
+  },
+  brandName: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    lineHeight: 18,
+    letterSpacing: -0.3,
+  },
+  brandSubtitle: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 11,
+    lineHeight: 13,
+  },
+  iconButton: {
     width: 38,
     height: 38,
     borderRadius: borderRadius.md,
@@ -453,18 +545,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: 20,
-    letterSpacing: -0.3,
-  },
-  headerRightPlaceholder: {
-    width: 38,
-  },
   scrollContent: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xs,
-    paddingBottom: spacing['4xl'],
   },
   heroCard: {
     marginTop: spacing.sm,
@@ -482,15 +565,14 @@ const styles = StyleSheet.create({
   },
   heroName: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 22,
-    letterSpacing: -0.4,
-    marginBottom: spacing.xs,
-    textAlign: 'center',
+    fontSize: typography.fontSize.h2,
+    letterSpacing: -0.3,
+    marginBottom: 4,
   },
   heroMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: 6,
     marginTop: 2,
   },
   heroEmail: {

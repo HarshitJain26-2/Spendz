@@ -9,6 +9,7 @@ export default function SettingsLayout() {
         animation: 'slide_from_right',
       }}
     >
+      <Stack.Screen name="index" />
       <Stack.Screen name="accounts" />
       <Stack.Screen
         name="add-account"

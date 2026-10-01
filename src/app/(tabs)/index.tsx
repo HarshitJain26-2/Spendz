@@ -106,7 +106,7 @@ export default function HomeScreen() {
 
         <View style={styles.headerRight}>
           <TouchableOpacity
-            onPress={() => router.push('/(tabs)/settings')}
+            onPress={() => router.push('/settings' as any)}
             style={[
               styles.iconButton,
               { backgroundColor: colors.surface, borderColor: colors.border },

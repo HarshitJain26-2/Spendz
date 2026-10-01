@@ -9,7 +9,6 @@ export default function ProfileLayout() {
         animation: 'slide_from_right',
       }}
     >
-      <Stack.Screen name="index" />
       <Stack.Screen name="edit" />
     </Stack>
   );

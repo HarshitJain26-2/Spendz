@@ -13,6 +13,7 @@ import {
   Home,
   Activity,
   Users,
+  User,
   Settings,
   Plus,
 } from 'lucide-react-native';
@@ -66,6 +67,8 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
         return <Activity size={22} color={color} strokeWidth={isFocused ? 2.4 : 2} />;
       case 'friends':
         return <Users size={22} color={color} strokeWidth={isFocused ? 2.4 : 2} />;
+      case 'profile':
+        return <User size={22} color={color} strokeWidth={isFocused ? 2.4 : 2} />;
       case 'settings':
         return <Settings size={22} color={color} strokeWidth={isFocused ? 2.4 : 2} />;
       default:
@@ -81,6 +84,8 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
         return 'Activity';
       case 'friends':
         return 'Friends';
+      case 'profile':
+        return 'Profile';
       case 'settings':
         return 'Settings';
       default:
@@ -92,6 +97,7 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
   const homeRoute = state.routes.find((r: { name: string }) => r.name === 'index');
   const activityRoute = state.routes.find((r: { name: string }) => r.name === 'activity');
   const friendsRoute = state.routes.find((r: { name: string }) => r.name === 'friends');
+  const profileRoute = state.routes.find((r: { name: string }) => r.name === 'profile');
   const settingsRoute = state.routes.find((r: { name: string }) => r.name === 'settings');
 
   const renderTabItem = (route?: typeof state.routes[0]) => {
@@ -178,8 +184,8 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({
       {/* 4. Friends */}
       {renderTabItem(friendsRoute)}
 
-      {/* 5. Settings */}
-      {renderTabItem(settingsRoute)}
+      {/* 5. Profile */}
+      {renderTabItem(profileRoute || settingsRoute)}
 
       {/* Add Transaction Action Sheet */}
       <AddActionSheet
