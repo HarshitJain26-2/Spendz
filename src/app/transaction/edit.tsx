@@ -27,7 +27,7 @@ import { useCategoryStore } from '@/store/categoryStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useSplitStore } from '@/store/splitStore';
 import { useFriendStore } from '@/store/friendStore';
-import type { PaidByType, SplitParticipant } from '@/types';
+import type { PaidByType, SplitParticipant, TransactionType } from '@/types';
 import {
   getTodayISO,
   generateId,
@@ -35,6 +35,9 @@ import {
   formatTimeLabel,
   combineDateInto,
   combineTimeInto,
+  setPresetToday,
+  setPresetYesterday,
+  setPresetNow,
 } from '@/utils/date';
 import { calculateEqualSplit } from '@/utils/calculations';
 import { typography } from '@/theme/typography';
@@ -63,8 +66,10 @@ export default function EditTransactionScreen() {
   );
 
   const [amount, setAmount] = useState('');
+  const [type, setType] = useState<TransactionType>('expense');
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [accountId, setAccountId] = useState('');
+  const [toAccountId, setToAccountId] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(getTodayISO());
   const [picker, setPicker] = useState<'date' | 'time' | null>(null);
@@ -79,8 +84,10 @@ export default function EditTransactionScreen() {
   useEffect(() => {
     if (transaction) {
       setAmount(transaction.amount.toString());
+      setType(transaction.type);
       setCategoryId(transaction.categoryId);
       setAccountId(transaction.accountId);
+      setToAccountId(transaction.toAccountId || '');
       setNote(transaction.note || '');
       setDate(transaction.date || getTodayISO());
     }
@@ -199,9 +206,18 @@ export default function EditTransactionScreen() {
   const isFriendPaid = Boolean(splitExpense && paidByType === 'friend' && paidByFriendId);
   const payerFriend = allAvailableFriends.find((f) => f.id === paidByFriendId);
 
-  const filteredCategories = categories.filter(
-    (c) => c.type === (transaction.type === 'income' ? 'income' : 'expense')
+  const filteredCategories = useMemo(
+    () => categories.filter((c) => c.type === (type === 'income' ? 'income' : 'expense')),
+    [categories, type]
   );
+
+  const handleTypeChange = (newType: 'expense' | 'income') => {
+    setType(newType);
+    const newFiltered = categories.filter((c) => c.type === newType);
+    if (!newFiltered.some((c) => c.id === categoryId)) {
+      setCategoryId(newFiltered[0]?.id || null);
+    }
+  };
 
   const hasValidParticipants =
     (isMeSelected && selectedFriendIds.length > 0) ||
@@ -217,7 +233,9 @@ export default function EditTransactionScreen() {
 
   const isValid =
     parseFloat(amount) > 0 &&
-    (splitExpense ? isSplitExpenseValid : (transaction.type === 'transfer' || Boolean(effectiveAccountId)));
+    (splitExpense
+      ? isSplitExpenseValid
+      : (type === 'transfer' ? Boolean(effectiveAccountId && toAccountId && effectiveAccountId !== toAccountId) : Boolean(effectiveAccountId)));
 
   const handleSave = () => {
     const parsedAmount = parseFloat(amount);
@@ -237,7 +255,14 @@ export default function EditTransactionScreen() {
         return;
       }
     } else {
-      if (transaction.type !== 'transfer' && !effectiveAccountId) return;
+      if (type === 'transfer') {
+        if (!effectiveAccountId || !toAccountId || effectiveAccountId === toAccountId) {
+          Alert.alert('Invalid Accounts', 'Please select two different accounts for transfer.');
+          return;
+        }
+      } else {
+        if (!effectiveAccountId) return;
+      }
     }
 
     // 1. Update split expense if linked
@@ -334,9 +359,11 @@ export default function EditTransactionScreen() {
     updateTransaction(
       transaction.id,
       {
+        type,
         amount: parsedAmount,
-        categoryId,
+        categoryId: type === 'transfer' ? null : categoryId,
         accountId: isFriendPaid ? (transaction.accountId || accounts[0]?.id || '') : accountId,
+        toAccountId: type === 'transfer' ? toAccountId : undefined,
         note: note.trim() || undefined,
         date,
       },
@@ -379,6 +406,69 @@ export default function EditTransactionScreen() {
         >
           {/* Amount */}
           <AmountInput value={amount} onChangeText={setAmount} />
+
+          {/* Type Switcher: Expense / Income (only for non-transfer, non-split) */}
+          {!splitExpense && transaction.type !== 'transfer' && (
+            <View style={styles.typeToggleContainer}>
+              <TouchableOpacity
+                onPress={() => handleTypeChange('expense')}
+                activeOpacity={0.8}
+                style={[
+                  styles.typeToggleBtn,
+                  {
+                    backgroundColor:
+                      type === 'expense' ? colors.expenseLight : colors.surface,
+                    borderColor:
+                      type === 'expense' ? colors.expense : colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.typeToggleText,
+                    {
+                      color:
+                        type === 'expense'
+                          ? colors.expense
+                          : colors.textSecondary,
+                      fontWeight: type === 'expense' ? '700' : '500',
+                    },
+                  ]}
+                >
+                  Expense
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => handleTypeChange('income')}
+                activeOpacity={0.8}
+                style={[
+                  styles.typeToggleBtn,
+                  {
+                    backgroundColor:
+                      type === 'income' ? colors.incomeLight : colors.surface,
+                    borderColor:
+                      type === 'income' ? colors.income : colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.typeToggleText,
+                    {
+                      color:
+                        type === 'income'
+                          ? colors.income
+                          : colors.textSecondary,
+                      fontWeight: type === 'income' ? '700' : '500',
+                    },
+                  ]}
+                >
+                  Income
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Participants & Paid By Selector (Only for Split Expenses) */}
           {splitExpense && (
@@ -570,8 +660,24 @@ export default function EditTransactionScreen() {
             </>
           )}
 
+          {/* To Account (if transfer) */}
+          {type === 'transfer' && (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+                  TRANSFER TO ACCOUNT
+                </Text>
+              </View>
+              <AccountPicker
+                accounts={accounts.filter((a) => a.id !== effectiveAccountId)}
+                selectedId={toAccountId}
+                onSelect={(a) => setToAccountId(a.id)}
+              />
+            </>
+          )}
+
           {/* Category (if not transfer) */}
-          {transaction.type !== 'transfer' && (
+          {type !== 'transfer' && (
             <CategoryPicker
               categories={filteredCategories}
               selectedId={categoryId}
@@ -584,6 +690,12 @@ export default function EditTransactionScreen() {
             date={date}
             time={formatTimeLabel(currentDateTime)}
             quickDateToggle={false}
+            showShortcuts
+            onSelectShortcut={(shortcutType) => {
+              if (shortcutType === 'today') setDate((prev) => setPresetToday(prev));
+              else if (shortcutType === 'yesterday') setDate((prev) => setPresetYesterday(prev));
+              else if (shortcutType === 'now') setDate((prev) => setPresetNow(prev));
+            }}
             onDatePress={() => setPicker('date')}
             onTimePress={() => setPicker('time')}
             style={{ marginBottom: spacing.lg }}
@@ -724,6 +836,24 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   friendChipName: {
+    fontSize: 14,
+  },
+  typeToggleContainer: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.xl,
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  typeToggleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+  },
+  typeToggleText: {
+    fontFamily: typography.fontFamily.semiBold,
     fontSize: 14,
   },
 });

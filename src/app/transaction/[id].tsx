@@ -124,16 +124,33 @@ export default function TransactionDetailScreen() {
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
           Transaction
         </Text>
-        <TouchableOpacity
-          onPress={handleDelete}
-          activeOpacity={0.7}
-          style={[
-            styles.deleteIconButton,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}
-        >
-          <Trash2 size={18} color={colors.expense} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() =>
+              router.push({
+                pathname: '/transaction/edit' as any,
+                params: { id: transaction.id },
+              })
+            }
+            activeOpacity={0.7}
+            style={[
+              styles.headerIconButton,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <Edit2 size={16} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleDelete}
+            activeOpacity={0.7}
+            style={[
+              styles.headerIconButton,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <Trash2 size={16} color={colors.expense} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -217,15 +234,29 @@ export default function TransactionDetailScreen() {
             </View>
           )}
 
-          {/* Date & Time */}
-          <View style={[styles.detailRow, styles.rowBorderTop, { borderTopColor: colors.border }]}>
-            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
-              DATE & TIME
-            </Text>
+          {/* Date & Time (Tap to Edit) */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() =>
+              router.push({
+                pathname: '/transaction/edit' as any,
+                params: { id: transaction.id },
+              })
+            }
+            style={[styles.detailRow, styles.rowBorderTop, { borderTopColor: colors.border }]}
+          >
+            <View style={styles.detailRowHeader}>
+              <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                DATE & TIME
+              </Text>
+              <Text style={[styles.tapToEditHint, { color: colors.accent }]}>
+                Tap to edit
+              </Text>
+            </View>
             <Text style={[styles.detailValue, { color: colors.textPrimary }]}>
               {formatFullDateTime(transaction.date)}
             </Text>
-          </View>
+          </TouchableOpacity>
 
           {/* Note */}
           {Boolean(transaction.note) && (
@@ -380,7 +411,12 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     fontSize: 20,
   },
-  deleteIconButton: {
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  headerIconButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -438,6 +474,15 @@ const styles = StyleSheet.create({
   },
   detailRow: {
     gap: 4,
+  },
+  detailRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  tapToEditHint: {
+    fontSize: 11,
+    fontFamily: typography.fontFamily.medium,
   },
   rowBorderTop: {
     borderTopWidth: 1,
