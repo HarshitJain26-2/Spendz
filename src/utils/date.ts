@@ -180,6 +180,29 @@ export const combineTimeInto = (base: string, picked: Date): string => {
 };
 
 /**
+ * Set the date portion of an ISO string to today while preserving its local time
+ */
+export const setPresetToday = (currentIso: string): string => {
+  return combineDateInto(currentIso, new Date());
+};
+
+/**
+ * Set the date portion of an ISO string to yesterday while preserving its local time
+ */
+export const setPresetYesterday = (currentIso: string): string => {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return combineDateInto(currentIso, yesterday);
+};
+
+/**
+ * Set the time portion of an ISO string to the current time while preserving its local date
+ */
+export const setPresetNow = (currentIso: string): string => {
+  return combineTimeInto(currentIso, new Date());
+};
+
+/**
  * Get ISO date string for today
  */
 export const getTodayISO = (): string => {
@@ -192,3 +215,4 @@ export const getTodayISO = (): string => {
 export const generateId = (): string => {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 };
+
