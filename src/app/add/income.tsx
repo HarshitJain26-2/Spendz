@@ -20,6 +20,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { CategorySelectorCard } from '@/components/transaction/CategorySelectorCard';
 import { AccountSelectorCard } from '@/components/transaction/AccountSelectorCard';
 import { DateTimeCards } from '@/components/transaction/DateTimeCards';
+import { DateTimePickerField } from '@/components/transaction/DateTimePickerField';
 import { NoteCard } from '@/components/transaction/NoteCard';
 import { numberToWords } from '@/utils/numberToWords';
 import { formatCurrency } from '@/utils/currency';
@@ -27,7 +28,16 @@ import { useTransactionStore } from '@/store/transactionStore';
 import { useCategoryStore } from '@/store/categoryStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useAppStore } from '@/store/appStore';
-import { getTodayISO } from '@/utils/date';
+import {
+  getTodayISO,
+  parseDateLocal,
+  formatTimeLabel,
+  combineDateInto,
+  combineTimeInto,
+  setPresetToday,
+  setPresetYesterday,
+  setPresetNow,
+} from '@/utils/date';
 import { typography } from '@/theme/typography';
 import { borderRadius, spacing, shadows } from '@/theme/spacing';
 
@@ -72,6 +82,18 @@ export default function AddIncomeScreen() {
   const [accountId, setAccountId] = useState(accounts[0]?.id || '');
   const [date, setDate] = useState(getTodayISO());
   const [note, setNote] = useState('');
+
+  // Full datetime currently being edited (date + time in one ISO string)
+  const currentDateTime = useMemo(() => parseDateLocal(date), [date]);
+
+  const handlePicked = (picked: Date) => {
+    setDate((prev) =>
+      inputMode === 'date'
+        ? combineDateInto(prev, picked)
+        : combineTimeInto(prev, picked)
+    );
+    activateInputMode('none');
+  };
 
   // Dynamically calculate scroll position so NoteCard sits comfortably above the keyboard/CTA
   const scrollToNote = useCallback(() => {
@@ -478,7 +500,13 @@ export default function AddIncomeScreen() {
           {/* 6. Date & Time Cards */}
           <DateTimeCards
             date={date}
-            onChangeDate={setDate}
+            time={formatTimeLabel(currentDateTime)}
+            showShortcuts
+            onSelectShortcut={(type) => {
+              if (type === 'today') setDate((prev) => setPresetToday(prev));
+              else if (type === 'yesterday') setDate((prev) => setPresetYesterday(prev));
+              else if (type === 'now') setDate((prev) => setPresetNow(prev));
+            }}
             onDatePress={() => {
               activateInputMode('date');
             }}
@@ -486,6 +514,15 @@ export default function AddIncomeScreen() {
               activateInputMode('time');
             }}
           />
+
+          {(inputMode === 'date' || inputMode === 'time') && (
+            <DateTimePickerField
+              mode={inputMode}
+              value={currentDateTime}
+              onCommit={handlePicked}
+              onClose={() => activateInputMode('none')}
+            />
+          )}
 
           {/* 7. Note Card */}
           <NoteCard

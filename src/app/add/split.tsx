@@ -21,12 +21,23 @@ import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { CategoryPicker } from '@/components/transaction/CategoryPicker';
 import { AccountPicker } from '@/components/transaction/AccountPicker';
+import { DateTimeCards } from '@/components/transaction/DateTimeCards';
+import { DateTimePickerField } from '@/components/transaction/DateTimePickerField';
 import { useTransactionStore } from '@/store/transactionStore';
 import { useCategoryStore } from '@/store/categoryStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useFriendStore } from '@/store/friendStore';
 import { useSplitStore } from '@/store/splitStore';
-import { getTodayISO } from '@/utils/date';
+import {
+  getTodayISO,
+  parseDateLocal,
+  formatTimeLabel,
+  combineDateInto,
+  combineTimeInto,
+  setPresetToday,
+  setPresetYesterday,
+  setPresetNow,
+} from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
 import { calculateEqualSplit } from '@/utils/calculations';
 import { typography } from '@/theme/typography';
@@ -65,6 +76,19 @@ export default function AddSplitScreen() {
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
   // Custom amounts per participant
   const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
+  const [date, setDate] = useState(getTodayISO());
+  const [picker, setPicker] = useState<'date' | 'time' | null>(null);
+
+  const currentDateTime = useMemo(() => parseDateLocal(date), [date]);
+
+  const handlePicked = (picked: Date) => {
+    setDate((prev) =>
+      picker === 'date'
+        ? combineDateInto(prev, picked)
+        : combineTimeInto(prev, picked)
+    );
+    setPicker(null);
+  };
 
   // Quick inline add friend modal / state
   const [newFriendName, setNewFriendName] = useState('');
@@ -211,7 +235,7 @@ export default function AddSplitScreen() {
       categoryId: effectiveCategoryId,
       accountId: effectiveAccountId,
       note: note.trim() || (isFriendPaid ? `Split Expense (Paid by ${payerFriend?.name})` : 'Split Expense'),
-      date: getTodayISO(),
+      date: date,
       skipBalanceUpdate: isFriendPaid, // Zero account outflow when friend paid!
     });
 
@@ -804,6 +828,33 @@ export default function AddSplitScreen() {
                 </Text>
               )}
             </View>
+          )}
+
+          {/* Date & Time Selector */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+              DATE & TIME
+            </Text>
+          </View>
+          <DateTimeCards
+            date={date}
+            time={formatTimeLabel(currentDateTime)}
+            showShortcuts
+            onSelectShortcut={(type) => {
+              if (type === 'today') setDate((prev) => setPresetToday(prev));
+              else if (type === 'yesterday') setDate((prev) => setPresetYesterday(prev));
+              else if (type === 'now') setDate((prev) => setPresetNow(prev));
+            }}
+            onDatePress={() => setPicker('date')}
+            onTimePress={() => setPicker('time')}
+          />
+          {picker !== null && (
+            <DateTimePickerField
+              mode={picker}
+              value={currentDateTime}
+              onCommit={handlePicked}
+              onClose={() => setPicker(null)}
+            />
           )}
 
           {/* Note */}
