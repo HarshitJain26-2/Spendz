@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import DateTimePicker, {
-  type DateTimePickerEvent,
+  type DateTimePickerChangeEvent,
 } from '@react-native-community/datetimepicker';
 import { useTheme } from '@/hooks/useTheme';
 import { typography } from '@/theme/typography';
@@ -48,12 +48,13 @@ export const DateTimePickerField: React.FC<DateTimePickerFieldProps> = ({
         value={value}
         mode={mode}
         display="default"
-        onChange={(event: DateTimePickerEvent, picked?: Date) => {
-          if (event.type === 'set' && picked) {
+        onValueChange={(_event: DateTimePickerChangeEvent, picked: Date) => {
+          if (picked) {
             onCommit(picked);
           }
           onClose();
         }}
+        onDismiss={onClose}
       />
     );
   }
@@ -78,7 +79,7 @@ export const DateTimePickerField: React.FC<DateTimePickerFieldProps> = ({
             mode={mode}
             display="spinner"
             themeVariant={colors.background === '#0D0D0E' ? 'dark' : 'light'}
-            onChange={(_event: DateTimePickerEvent, picked?: Date) => {
+            onValueChange={(_event: DateTimePickerChangeEvent, picked: Date) => {
               if (picked) setPending(picked);
             }}
           />
