@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import {
@@ -18,6 +18,7 @@ import { useCategoryStore } from '@/store/categoryStore';
 import { useTransactionStore } from '@/store/transactionStore';
 import { useFriendStore } from '@/store/friendStore';
 import { useSplitStore } from '@/store/splitStore';
+import { useAuthStore } from '@/store/authStore';
 import { useTheme } from '@/hooks/useTheme';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
@@ -29,12 +30,43 @@ SplashScreen.preventAutoHideAsync().catch(() => {
   // Ignore splash screen errors on platforms where it's not supported
 });
 
+function NavigationProtection() {
+  const segments = useSegments();
+  const router = useRouter();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isInitialized = useAuthStore((s) => s.isInitialized);
+  const setIntendedDestination = useAuthStore((s) => s.setIntendedDestination);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    const segmentList = segments as string[];
+    // When at root ('/' or 'index'), index.tsx handles the initial redirection
+    if (!segmentList || segmentList.length === 0 || segmentList[0] === 'index') return;
+
+    const inAuthGroup = segmentList[0] === 'auth';
+
+    if (!isAuthenticated && !inAuthGroup) {
+      const path = `/${segmentList.join('/')}`;
+      if (path !== '/index' && path !== '/') {
+        setIntendedDestination(path);
+      }
+      router.replace('/auth/sign-in');
+    } else if (isAuthenticated && inAuthGroup) {
+      router.replace('/');
+    }
+  }, [isAuthenticated, isInitialized, segments, router, setIntendedDestination]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const { colors: themeColors, isDark } = useTheme();
   const setIsDbReady = useAppStore((s) => s.setIsDbReady);
   const isDbReady = useAppStore((s) => s.isDbReady);
   const isHydrated = useAppStore((s) => s.isHydrated);
   const setIsHydrated = useAppStore((s) => s.setIsHydrated);
+  const isAuthInitialized = useAuthStore((s) => s.isInitialized);
 
   const [initStatus, setInitStatus] = useState<'initializing' | 'ready' | 'error'>('initializing');
   const [initError, setInitError] = useState<string | null>(null);
@@ -66,7 +98,10 @@ export default function RootLayout() {
       useFriendStore.getState().loadFriends();
       useSplitStore.getState().loadSplitExpenses();
 
-      // 5. Complete hydration
+      // 5. Initialize auth session (retrieves persistent session)
+      await useAuthStore.getState().initAuth();
+
+      // 6. Complete hydration
       setIsHydrated(true);
       setIsDbReady(true);
       setInitStatus('ready');
@@ -82,19 +117,51 @@ export default function RootLayout() {
   }, [prepare]);
 
   useEffect(() => {
-    if (fontsLoaded && isDbReady && isHydrated && initStatus === 'ready') {
+    if (fontsLoaded && isDbReady && isHydrated && isAuthInitialized && initStatus === 'ready') {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded, isDbReady, isHydrated, initStatus]);
+  }, [fontsLoaded, isDbReady, isHydrated, isAuthInitialized, initStatus]);
 
-  // Error State UI with Retry
-  if (initStatus === 'error') {
-    return (
-      <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
+  const isLoading = !fontsLoaded || !isDbReady || !isHydrated || !isAuthInitialized || initStatus !== 'ready';
+
+  return (
+    <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <NavigationProtection />
+      <Stack
+        initialRouteName="index"
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: themeColors.background },
+          animation: 'slide_from_right',
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="auth" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="add"
+          options={{
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
+          }}
+        />
+        <Stack.Screen name="transaction" />
+        <Stack.Screen name="friends" />
+        <Stack.Screen name="insights" />
+        <Stack.Screen name="settings" />
+        <Stack.Screen name="reports" />
+        <Stack.Screen name="profile" />
+      </Stack>
+
+      {/* Error Overlay with Retry */}
+      {initStatus === 'error' && (
         <View
           style={[
+            StyleSheet.absoluteFill,
             styles.centerContainer,
-            { backgroundColor: themeColors.background },
+            { backgroundColor: themeColors.background, zIndex: 999 },
           ]}
         >
           <Text style={[styles.errorTitle, { color: themeColors.expense }]}>
@@ -116,18 +183,15 @@ export default function RootLayout() {
             <Text style={styles.retryButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaProvider>
-    );
-  }
+      )}
 
-  // Initializing / Loading State UI
-  if (!fontsLoaded || !isDbReady || !isHydrated || initStatus !== 'ready') {
-    return (
-      <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
+      {/* Initializing / Loading Overlay */}
+      {isLoading && initStatus !== 'error' && (
         <View
           style={[
+            StyleSheet.absoluteFill,
             styles.centerContainer,
-            { backgroundColor: themeColors.background },
+            { backgroundColor: themeColors.background, zIndex: 999 },
           ]}
         >
           <Image
@@ -139,7 +203,7 @@ export default function RootLayout() {
             Spendz
           </Text>
           <Text style={[styles.brandSubtitle, { color: themeColors.textSecondary }]}>
-            Preparing your data...
+            Checking session & preparing data...
           </Text>
           <ActivityIndicator
             size="small"
@@ -147,38 +211,7 @@ export default function RootLayout() {
             style={styles.spinner}
           />
         </View>
-      </SafeAreaProvider>
-    );
-  }
-
-  return (
-    <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
-      <Stack
-        initialRouteName="index"
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: themeColors.background },
-          animation: 'slide_from_right',
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="onboarding" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen
-          name="add"
-          options={{
-            presentation: 'modal',
-            animation: 'slide_from_bottom',
-          }}
-        />
-        <Stack.Screen name="transaction" />
-        <Stack.Screen name="friends" />
-        <Stack.Screen name="insights" />
-        <Stack.Screen name="settings" />
-        <Stack.Screen name="reports" />
-        <Stack.Screen name="profile" />
-      </Stack>
+      )}
     </SafeAreaProvider>
   );
 }

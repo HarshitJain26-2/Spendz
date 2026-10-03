@@ -37,13 +37,18 @@ export const Input: React.FC<InputProps> = ({
       ? colors.accent
       : colors.border;
 
+  const hasLabel = Boolean(label);
+  const hasError = Boolean(error);
+  const hasLeftIcon = Boolean(leftIcon);
+  const hasRightIcon = Boolean(rightIcon);
+
   return (
     <View style={[styles.container, containerStyle]}>
-      {label && (
+      {hasLabel && (
         <Text
           style={[
             styles.label,
-            { color: error ? colors.expense : colors.textSecondary },
+            { color: hasError ? colors.expense : colors.textSecondary },
           ]}
         >
           {label}
@@ -58,7 +63,7 @@ export const Input: React.FC<InputProps> = ({
           },
         ]}
       >
-        {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
+        {hasLeftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
         <TextInput
           placeholderTextColor={colors.textTertiary}
           onFocus={() => setIsFocused(true)}
@@ -74,9 +79,9 @@ export const Input: React.FC<InputProps> = ({
           ]}
           {...props}
         />
-        {rightIcon && <View style={styles.rightIcon}>{rightIcon}</View>}
+        {hasRightIcon && <View style={styles.rightIcon}>{rightIcon}</View>}
       </View>
-      {error && (
+      {hasError && (
         <Text style={[styles.error, { color: colors.expense }]}>{error}</Text>
       )}
     </View>

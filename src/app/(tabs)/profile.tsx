@@ -23,6 +23,8 @@ import {
   Calendar,
   Settings,
   Tag,
+  LogOut,
+  Fingerprint,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useBottomTabInset } from '@/hooks/useBottomTabInset';
@@ -31,11 +33,13 @@ import { useAccountStore } from '@/store/accountStore';
 import { useCategoryStore } from '@/store/categoryStore';
 import { useFriendStore } from '@/store/friendStore';
 import { useTransactionStore } from '@/store/transactionStore';
+import { useAuthStore } from '@/store/authStore';
 import { Card } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
+import { showAlert } from '@/utils/alert';
 
 export default function ProfileTabScreen() {
   const router = useRouter();
@@ -49,9 +53,28 @@ export default function ProfileTabScreen() {
   const categories = useCategoryStore((s) => s.categories);
   const friends = useFriendStore((s) => s.friends);
   const transactions = useTransactionStore((s) => s.transactions);
+  const authUser = useAuthStore((s) => s.user);
 
   const displayName = (userProfile.fullName || userProfile.name || '').trim();
   const defaultAccount = accounts.find((a) => a.isDefault) || accounts[0];
+
+  const handleSignOut = () => {
+    showAlert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            await useAuthStore.getState().signOut();
+            router.replace('/auth/sign-in');
+          },
+        },
+      ]
+    );
+  };
 
   const getThemeLabel = () => {
     switch (themeMode) {
@@ -153,6 +176,18 @@ export default function ProfileTabScreen() {
               </View>
             ) : null}
 
+            {authUser?.id || userProfile.id ? (
+              <View style={styles.heroMetaRow}>
+                <Fingerprint size={14} color={colors.textTertiary} />
+                <Text
+                  style={[styles.heroPhone, { color: colors.textTertiary }]}
+                  numberOfLines={1}
+                >
+                  UID: {(authUser?.id || userProfile.id || '').slice(0, 16)}...
+                </Text>
+              </View>
+            ) : null}
+
             <View style={styles.heroButtonWrapper}>
               <Button
                 title="Edit Profile"
@@ -250,10 +285,10 @@ export default function ProfileTabScreen() {
           </View>
         </Card>
 
-        {/* SECTION 1: Personal */}
+        {/* SECTION 1: Personal & Account */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-            PERSONAL
+            PERSONAL & ACCOUNT
           </Text>
         </View>
 
@@ -278,6 +313,34 @@ export default function ProfileTabScreen() {
                 </Text>
                 <Text style={[styles.menuSub, { color: colors.textTertiary }]}>
                   Full name, email, phone & avatar
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={18} color={colors.textTertiary} />
+          </TouchableOpacity>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <TouchableOpacity
+            onPress={handleSignOut}
+            style={styles.menuRow}
+            activeOpacity={0.7}
+          >
+            <View style={styles.menuLeft}>
+              <View
+                style={[
+                  styles.iconContainer,
+                  { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
+                ]}
+              >
+                <LogOut size={18} color={colors.expense} strokeWidth={2} />
+              </View>
+              <View style={styles.menuTextGroup}>
+                <Text style={[styles.menuTitle, { color: colors.expense }]}>
+                  Sign Out
+                </Text>
+                <Text style={[styles.menuSub, { color: colors.textTertiary }]}>
+                  Sign out of your Spendz account
                 </Text>
               </View>
             </View>

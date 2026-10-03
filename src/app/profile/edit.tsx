@@ -21,6 +21,8 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useAppStore } from '@/store/appStore';
+import { useAuthStore } from '@/store/authStore';
+import { supabase } from '@/lib/supabase';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
@@ -35,12 +37,13 @@ export default function EditProfileScreen() {
   // Stable selectors from Zustand
   const userProfile = useAppStore((s) => s.userProfile);
   const setUserProfile = useAppStore((s) => s.setUserProfile);
+  const authUser = useAuthStore((s) => s.user);
 
   // Preload current values
   const [fullName, setFullName] = useState(
-    userProfile.fullName || userProfile.name || ''
+    userProfile.fullName || userProfile.name || authUser?.user_metadata?.full_name || ''
   );
-  const [email, setEmail] = useState(userProfile.email || '');
+  const [email, setEmail] = useState(authUser?.email || userProfile.email || '');
   const [phone, setPhone] = useState(userProfile.phone || '');
   const [avatarUri, setAvatarUri] = useState<string | null>(
     userProfile.avatarUri || null
@@ -89,22 +92,36 @@ export default function EditProfileScreen() {
     return isValid;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
 
     setIsSaving(true);
     const trimmedName = fullName.trim();
-    const trimmedEmail = email.trim();
+    const trimmedEmail = authUser?.email || email.trim();
     const trimmedPhone = phone.trim();
 
-    // Persistent update & immediate Zustand update
+    // Persistent update & immediate Zustand update using auth user ID if available
     setUserProfile({
+      id: authUser?.id || userProfile.id,
       fullName: trimmedName,
       name: trimmedName,
       email: trimmedEmail,
       phone: trimmedPhone,
       avatarUri: avatarUri || null,
     });
+
+    if (authUser) {
+      try {
+        await supabase.auth.updateUser({
+          data: {
+            full_name: trimmedName,
+            name: trimmedName,
+          },
+        });
+      } catch (e) {
+        console.warn('[Spendz] Failed to sync profile with Supabase auth metadata:', e);
+      }
+    }
 
     setIsSaving(false);
     router.back();
