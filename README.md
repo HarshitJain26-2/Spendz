@@ -1,56 +1,55 @@
-# Welcome to your Expo app 👋
+# Spendz 💰
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Spendz is a modern personal finance and expense sharing mobile & web application built with **React Native (Expo)**, **TypeScript**, **Zustand**, and **Supabase**.
 
-## Get started
+---
 
-1. Install dependencies
+## ✨ Features
 
-   ```bash
-   npm install
-   ```
+- 📊 **Expense & Income Tracking**: Track transactions across multiple accounts (Cash, Bank, Wallet, Card).
+- 🤝 **Split Expenses & Friends**: Split group bills equally or with custom amounts, and track who owes who.
+- ⚡ **Multi-Account Balances**: Real-time balance updates across cash and digital accounts.
+- 🔐 **Supabase Cloud Backend & Auth**: Cloud persistence with email/password authentication and Row Level Security (RLS).
+- 🌓 **Dark & Light Modes**: Beautiful UI tailored for both light and dark preferences.
+- 📱 **Cross-Platform**: Runs seamlessly on Android, iOS, and Web.
 
-2. Start the app
+---
 
-   ```bash
-   npx expo start
-   ```
+## 🚀 Getting Started
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
+### 1. Install Dependencies
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### 2. Configure Environment Variables
+Create or edit `.env` in the root directory:
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
 
-### Other setup steps
+### 3. Setup Supabase Cloud Database
+Spendz includes a complete SQL setup script and migration suite under the [`supabase/`](./supabase/) folder:
+- **1-Minute Setup**: Open the [Supabase Dashboard](https://supabase.com/dashboard) -> **SQL Editor**, paste the contents of [`supabase/full_setup.sql`](./supabase/full_setup.sql), and run it.
+- **Detailed Documentation**: See [`supabase/README.md`](./supabase/README.md) for table schemas, RLS policies, automated signup triggers, and the query library.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+### 4. Start the Application
+```bash
+npx expo start
+```
+From the interactive terminal menu, press:
+- `w` to open on the **Web**
+- `a` to open in an **Android Emulator**
+- `i` to open in an **iOS Simulator**
 
-## Learn more
+---
 
-To learn more about developing your project with Expo, look at the following resources:
+## 🗄️ Database & Queries
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Detailed documentation on the cloud schema, automated triggers, and query libraries:
+- 📖 [Supabase Documentation & Query Guides](./supabase/README.md)
+- ⚡ [All-in-One SQL Setup Script](./supabase/full_setup.sql)
+- 📜 [Migrations](./supabase/migrations/)
+- 🔍 [Transactions, Splits & Analytics Queries](./supabase/queries/)
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
