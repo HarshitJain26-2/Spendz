@@ -18,6 +18,7 @@ import { useCategoryStore } from '@/store/categoryStore';
 import { useTransactionStore } from '@/store/transactionStore';
 import { useFriendStore } from '@/store/friendStore';
 import { useSplitStore } from '@/store/splitStore';
+import { useGroupStore } from '@/store/groupStore';
 import { useAuthStore } from '@/store/authStore';
 import { useTheme } from '@/hooks/useTheme';
 import { typography } from '@/theme/typography';
@@ -97,6 +98,7 @@ export default function RootLayout() {
       useTransactionStore.getState().loadTransactions();
       useFriendStore.getState().loadFriends();
       useSplitStore.getState().loadSplitExpenses();
+      useGroupStore.getState().loadGroups();
 
       // 5. Initialize auth session (retrieves persistent session)
       await useAuthStore.getState().initAuth();
@@ -149,11 +151,13 @@ export default function RootLayout() {
         />
         <Stack.Screen name="transaction" />
         <Stack.Screen name="friends" />
+        <Stack.Screen name="groups" />
         <Stack.Screen name="insights" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="reports" />
         <Stack.Screen name="profile" />
       </Stack>
+
 
       {/* Error Overlay with Retry */}
       {initStatus === 'error' && (
