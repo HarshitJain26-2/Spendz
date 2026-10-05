@@ -76,3 +76,53 @@ export const appSettings = sqliteTable('app_settings', {
   value: text('value').notNull(),
 });
 
+// ─── Groups ────────────────────────────────────────────────────────────
+export const groups = sqliteTable('groups', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  icon: text('icon').notNull().default('🏖'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+// ─── Group Members ─────────────────────────────────────────────────────
+export const groupMembers = sqliteTable('group_members', {
+  id: text('id').primaryKey(),
+  groupId: text('group_id').notNull().references(() => groups.id),
+  friendId: text('friend_id').references(() => friends.id), // null = "You" (Me)
+  createdAt: text('created_at').notNull(),
+});
+
+// ─── Group Expenses ────────────────────────────────────────────────────
+export const groupExpenses = sqliteTable('group_expenses', {
+  id: text('id').primaryKey(),
+  groupId: text('group_id').notNull().references(() => groups.id),
+  description: text('description').notNull(),
+  amount: real('amount').notNull(),
+  paidByFriendId: text('paid_by_friend_id').references(() => friends.id), // null = "You" (Me)
+  date: text('date').notNull(),
+  splitMethod: text('split_method').notNull().default('equal'), // 'equal' | 'custom'
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+// ─── Group Expense Participants ────────────────────────────────────────
+export const groupExpenseParticipants = sqliteTable('group_expense_participants', {
+  id: text('id').primaryKey(),
+  groupExpenseId: text('group_expense_id').notNull().references(() => groupExpenses.id),
+  friendId: text('friend_id').references(() => friends.id), // null = "You" (Me)
+  shareAmount: real('share_amount').notNull(),
+});
+
+// ─── Group Settlements ─────────────────────────────────────────────────
+export const groupSettlements = sqliteTable('group_settlements', {
+  id: text('id').primaryKey(),
+  groupId: text('group_id').notNull().references(() => groups.id),
+  fromFriendId: text('from_friend_id').references(() => friends.id), // null = "You" (Me)
+  toFriendId: text('to_friend_id').references(() => friends.id), // null = "You" (Me)
+  amount: real('amount').notNull(),
+  date: text('date').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+

@@ -86,6 +86,72 @@ export interface SplitParticipant {
   friend?: Friend | null;
 }
 
+// ─── Group ───────────────────────────────────────────────────────────
+export interface Group {
+  id: string;
+  name: string;
+  icon: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined
+  members?: GroupMember[];
+}
+
+export interface GroupMember {
+  id: string;
+  groupId: string;
+  friendId: string | null; // null = "You" (Me)
+  createdAt: string;
+  // Joined
+  friend?: Friend | null;
+}
+
+export interface GroupExpense {
+  id: string;
+  groupId: string;
+  description: string;
+  amount: number;
+  paidByFriendId: string | null; // null = "You" (Me)
+  date: string;
+  splitMethod: SplitMethod; // 'equal' | 'custom'
+  createdAt: string;
+  updatedAt: string;
+  // Joined
+  participants?: GroupExpenseParticipant[];
+  paidByFriend?: Friend | null;
+}
+
+export interface GroupExpenseParticipant {
+  id: string;
+  groupExpenseId: string;
+  friendId: string | null; // null = "You" (Me)
+  shareAmount: number;
+  // Joined
+  friend?: Friend | null;
+}
+
+export interface GroupSettlement {
+  id: string;
+  groupId: string;
+  fromFriendId: string | null; // null = "You" (Me)
+  toFriendId: string | null; // null = "You" (Me)
+  amount: number;
+  date: string;
+  createdAt: string;
+  // Joined
+  fromFriend?: Friend | null;
+  toFriend?: Friend | null;
+}
+
+export interface GroupMemberBalance {
+  friendId: string | null; // null = "You" (Me)
+  friend?: Friend | null;
+  name: string;
+  balance: number; // positive = net owed, negative = net owes
+  balanceWithMe: number; // positive = owes Me, negative = Me owes them
+}
+
+
 // ─── App State ───────────────────────────────────────────────────────
 export type ThemeMode = 'light' | 'dark' | 'system';
 

@@ -7,6 +7,11 @@ import type {
   SplitExpense,
   SplitParticipant,
   SplitStatus,
+  Group,
+  GroupMember,
+  GroupExpense,
+  GroupExpenseParticipant,
+  GroupSettlement,
 } from '@/types';
 import { ALL_DEFAULT_CATEGORIES } from '@/constants/categories';
 import { generateId, getTodayISO } from '@/utils/date';
@@ -19,7 +24,13 @@ const STORAGE_KEYS = {
   SPLITS: 'spendz_web_splits',
   PARTICIPANTS: 'spendz_web_split_participants',
   SETTINGS: 'spendz_web_settings',
+  GROUPS: 'spendz_web_groups',
+  GROUP_MEMBERS: 'spendz_web_group_members',
+  GROUP_EXPENSES: 'spendz_web_group_expenses',
+  GROUP_PARTICIPANTS: 'spendz_web_group_expense_participants',
+  GROUP_SETTLEMENTS: 'spendz_web_group_settlements',
 };
+
 
 function getStorage<T>(key: string, fallback: T): T {
   try {
@@ -336,6 +347,195 @@ export const repository: DatabaseRepository = {
       this.deleteSplitExpense(s.id);
     }
   },
+
+  // ─── Groups ──────────────────────────────────────────────────────────
+  getGroups(): Group[] {
+    const groups = getStorage<Group[]>(STORAGE_KEYS.GROUPS, []);
+    const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
+    const friends = this.getFriends();
+    const friendMap = new Map(friends.map((f) => [f.id, f]));
+
+    return groups.map((g) => ({
+      ...g,
+      members: members
+        .filter((m) => m.groupId === g.id)
+        .map((m) => ({
+          ...m,
+          friend: m.friendId ? friendMap.get(m.friendId) || null : null,
+        })),
+    }));
+  },
+
+  addGroup(group: Group, members: GroupMember[]) {
+    const groups = getStorage<Group[]>(STORAGE_KEYS.GROUPS, []);
+    groups.unshift(group);
+    setStorage(STORAGE_KEYS.GROUPS, groups);
+
+    const allMembers = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
+    allMembers.push(...members);
+    setStorage(STORAGE_KEYS.GROUP_MEMBERS, allMembers);
+  },
+
+  updateGroup(id: string, data: Partial<Group>) {
+    const groups = getStorage<Group[]>(STORAGE_KEYS.GROUPS, []);
+    const updated = groups.map((g) => (g.id === id ? { ...g, ...data } : g));
+    setStorage(STORAGE_KEYS.GROUPS, updated);
+  },
+
+  deleteGroup(id: string) {
+    const groups = getStorage<Group[]>(STORAGE_KEYS.GROUPS, []);
+    setStorage(STORAGE_KEYS.GROUPS, groups.filter((g) => g.id !== id));
+
+    const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
+    setStorage(STORAGE_KEYS.GROUP_MEMBERS, members.filter((m) => m.groupId !== id));
+
+    // Delete group expenses & participants
+    const expenses = getStorage<Omit<GroupExpense, 'participants'>[]>(STORAGE_KEYS.GROUP_EXPENSES, []);
+    const groupExpenseIds = new Set(expenses.filter((e) => e.groupId === id).map((e) => e.id));
+    setStorage(STORAGE_KEYS.GROUP_EXPENSES, expenses.filter((e) => e.groupId !== id));
+
+    const participants = getStorage<GroupExpenseParticipant[]>(STORAGE_KEYS.GROUP_PARTICIPANTS, []);
+    setStorage(STORAGE_KEYS.GROUP_PARTICIPANTS, participants.filter((p) => !groupExpenseIds.has(p.groupExpenseId)));
+
+    // Delete group settlements
+    const settlements = getStorage<GroupSettlement[]>(STORAGE_KEYS.GROUP_SETTLEMENTS, []);
+    setStorage(STORAGE_KEYS.GROUP_SETTLEMENTS, settlements.filter((s) => s.groupId !== id));
+  },
+
+  addGroupMember(member: GroupMember) {
+    const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
+    // Prevent duplicate member in same group
+    const exists = members.some((m) => m.groupId === member.groupId && m.friendId === member.friendId);
+    if (!exists) {
+      members.push(member);
+      setStorage(STORAGE_KEYS.GROUP_MEMBERS, members);
+    }
+  },
+
+  removeGroupMember(groupId: string, friendId: string | null) {
+    const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
+    const filtered = members.filter((m) => !(m.groupId === groupId && m.friendId === friendId));
+    setStorage(STORAGE_KEYS.GROUP_MEMBERS, filtered);
+  },
+
+  // ─── Group Expenses ──────────────────────────────────────────────────
+  getGroupExpenses(groupId?: string): GroupExpense[] {
+    const expenses = getStorage<Omit<GroupExpense, 'participants'>[]>(
+      STORAGE_KEYS.GROUP_EXPENSES,
+      []
+    );
+    const participants = getStorage<GroupExpenseParticipant[]>(
+      STORAGE_KEYS.GROUP_PARTICIPANTS,
+      []
+    );
+    const friends = this.getFriends();
+    const friendMap = new Map(friends.map((f) => [f.id, f]));
+
+    const filteredExpenses = groupId
+      ? expenses.filter((e) => e.groupId === groupId)
+      : expenses;
+
+    // Sort descending by date
+    return filteredExpenses
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .map((e) => ({
+        ...e,
+        paidByFriend: e.paidByFriendId ? friendMap.get(e.paidByFriendId) || null : null,
+        participants: participants
+          .filter((p) => p.groupExpenseId === e.id)
+          .map((p) => ({
+            ...p,
+            friend: p.friendId ? friendMap.get(p.friendId) || null : null,
+          })),
+      }));
+  },
+
+  addGroupExpense(
+    expense: Omit<GroupExpense, 'participants'>,
+    participants: GroupExpenseParticipant[]
+  ) {
+    const expenses = getStorage<Omit<GroupExpense, 'participants'>[]>(
+      STORAGE_KEYS.GROUP_EXPENSES,
+      []
+    );
+    expenses.unshift(expense);
+    setStorage(STORAGE_KEYS.GROUP_EXPENSES, expenses);
+
+    const allParticipants = getStorage<GroupExpenseParticipant[]>(
+      STORAGE_KEYS.GROUP_PARTICIPANTS,
+      []
+    );
+    allParticipants.push(...participants);
+    setStorage(STORAGE_KEYS.GROUP_PARTICIPANTS, allParticipants);
+  },
+
+  updateGroupExpense(
+    id: string,
+    data: Partial<Omit<GroupExpense, 'participants'>>,
+    participants?: GroupExpenseParticipant[]
+  ) {
+    const expenses = getStorage<Omit<GroupExpense, 'participants'>[]>(
+      STORAGE_KEYS.GROUP_EXPENSES,
+      []
+    );
+    const updatedExpenses = expenses.map((e) => (e.id === id ? { ...e, ...data } : e));
+    setStorage(STORAGE_KEYS.GROUP_EXPENSES, updatedExpenses);
+
+    if (participants) {
+      const allParticipants = getStorage<GroupExpenseParticipant[]>(
+        STORAGE_KEYS.GROUP_PARTICIPANTS,
+        []
+      );
+      const filtered = allParticipants.filter((p) => p.groupExpenseId !== id);
+      filtered.push(...participants);
+      setStorage(STORAGE_KEYS.GROUP_PARTICIPANTS, filtered);
+    }
+  },
+
+  deleteGroupExpense(id: string) {
+    const expenses = getStorage<Omit<GroupExpense, 'participants'>[]>(
+      STORAGE_KEYS.GROUP_EXPENSES,
+      []
+    );
+    setStorage(STORAGE_KEYS.GROUP_EXPENSES, expenses.filter((e) => e.id !== id));
+
+    const participants = getStorage<GroupExpenseParticipant[]>(
+      STORAGE_KEYS.GROUP_PARTICIPANTS,
+      []
+    );
+    setStorage(STORAGE_KEYS.GROUP_PARTICIPANTS, participants.filter((p) => p.groupExpenseId !== id));
+  },
+
+  // ─── Group Settlements ───────────────────────────────────────────────
+  getGroupSettlements(groupId?: string): GroupSettlement[] {
+    const settlements = getStorage<GroupSettlement[]>(STORAGE_KEYS.GROUP_SETTLEMENTS, []);
+    const friends = this.getFriends();
+    const friendMap = new Map(friends.map((f) => [f.id, f]));
+
+    const filtered = groupId
+      ? settlements.filter((s) => s.groupId === groupId)
+      : settlements;
+
+    return filtered
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .map((s) => ({
+        ...s,
+        fromFriend: s.fromFriendId ? friendMap.get(s.fromFriendId) || null : null,
+        toFriend: s.toFriendId ? friendMap.get(s.toFriendId) || null : null,
+      }));
+  },
+
+  addGroupSettlement(settlement: GroupSettlement) {
+    const settlements = getStorage<GroupSettlement[]>(STORAGE_KEYS.GROUP_SETTLEMENTS, []);
+    settlements.unshift(settlement);
+    setStorage(STORAGE_KEYS.GROUP_SETTLEMENTS, settlements);
+  },
+
+  deleteGroupSettlement(id: string) {
+    const settlements = getStorage<GroupSettlement[]>(STORAGE_KEYS.GROUP_SETTLEMENTS, []);
+    setStorage(STORAGE_KEYS.GROUP_SETTLEMENTS, settlements.filter((s) => s.id !== id));
+  },
+
 
   // ─── Settings ────────────────────────────────────────────────────────
   getSetting(key: string): string | null {

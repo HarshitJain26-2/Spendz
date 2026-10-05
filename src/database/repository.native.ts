@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import * as schema from './schema';
 import type { DatabaseRepository } from './types';
 import type {
@@ -15,6 +15,11 @@ import type {
   SplitParticipant,
   SplitMethod,
   SplitStatus,
+  Group,
+  GroupMember,
+  GroupExpense,
+  GroupExpenseParticipant,
+  GroupSettlement,
 } from '@/types';
 import { ALL_DEFAULT_CATEGORIES } from '@/constants/categories';
 import { generateId, getTodayISO } from '@/utils/date';
@@ -101,11 +106,56 @@ export const repository: DatabaseRepository = {
           settled_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS groups (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          icon TEXT NOT NULL DEFAULT '🏖',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS group_members (
+          id TEXT PRIMARY KEY,
+          group_id TEXT NOT NULL REFERENCES groups(id),
+          friend_id TEXT REFERENCES friends(id),
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS group_expenses (
+          id TEXT PRIMARY KEY,
+          group_id TEXT NOT NULL REFERENCES groups(id),
+          description TEXT NOT NULL,
+          amount REAL NOT NULL,
+          paid_by_friend_id TEXT REFERENCES friends(id),
+          date TEXT NOT NULL,
+          split_method TEXT NOT NULL DEFAULT 'equal',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS group_expense_participants (
+          id TEXT PRIMARY KEY,
+          group_expense_id TEXT NOT NULL REFERENCES group_expenses(id),
+          friend_id TEXT REFERENCES friends(id),
+          share_amount REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS group_settlements (
+          id TEXT PRIMARY KEY,
+          group_id TEXT NOT NULL REFERENCES groups(id),
+          from_friend_id TEXT REFERENCES friends(id),
+          to_friend_id TEXT REFERENCES friends(id),
+          amount REAL NOT NULL,
+          date TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS app_settings (
           key TEXT PRIMARY KEY,
           value TEXT NOT NULL
         );
       `);
+
 
       // Safe non-destructive column migrations for existing SQLite databases
       try {
@@ -403,6 +453,258 @@ export const repository: DatabaseRepository = {
       this.deleteSplitExpense(s.id);
     }
   },
+
+  // ─── Groups ──────────────────────────────────────────────────────────
+  getGroups(): Group[] {
+    const db = getDb();
+    const groupRows = db.select().from(schema.groups).all();
+    const memberRows = db.select().from(schema.groupMembers).all();
+    const friendRows = db.select().from(schema.friends).all();
+    const friendMap = new Map(friendRows.map((f) => [f.id, f]));
+
+    return groupRows.map((g) => ({
+      id: g.id,
+      name: g.name,
+      icon: g.icon,
+      createdAt: g.createdAt,
+      updatedAt: g.updatedAt,
+      members: memberRows
+        .filter((m) => m.groupId === g.id)
+        .map((m) => ({
+          id: m.id,
+          groupId: m.groupId,
+          friendId: m.friendId,
+          createdAt: m.createdAt,
+          friend: m.friendId ? friendMap.get(m.friendId) || null : null,
+        })),
+    }));
+  },
+
+  addGroup(group: Group, members: GroupMember[]) {
+    const db = getDb();
+    db.insert(schema.groups).values({
+      id: group.id,
+      name: group.name,
+      icon: group.icon,
+      createdAt: group.createdAt,
+      updatedAt: group.updatedAt,
+    }).run();
+
+    for (const m of members) {
+      db.insert(schema.groupMembers).values({
+        id: m.id,
+        groupId: m.groupId,
+        friendId: m.friendId,
+        createdAt: m.createdAt,
+      }).run();
+    }
+  },
+
+  updateGroup(id: string, data: Partial<Group>) {
+    const db = getDb();
+    db.update(schema.groups)
+      .set(data as any)
+      .where(eq(schema.groups.id, id))
+      .run();
+  },
+
+  deleteGroup(id: string) {
+    const db = getDb();
+    // Delete expense participants first
+    const expenses = db
+      .select({ id: schema.groupExpenses.id })
+      .from(schema.groupExpenses)
+      .where(eq(schema.groupExpenses.groupId, id))
+      .all();
+
+    for (const exp of expenses) {
+      db.delete(schema.groupExpenseParticipants)
+        .where(eq(schema.groupExpenseParticipants.groupExpenseId, exp.id))
+        .run();
+    }
+
+    // Delete group expenses
+    db.delete(schema.groupExpenses).where(eq(schema.groupExpenses.groupId, id)).run();
+
+    // Delete settlements
+    db.delete(schema.groupSettlements).where(eq(schema.groupSettlements.groupId, id)).run();
+
+    // Delete members
+    db.delete(schema.groupMembers).where(eq(schema.groupMembers.groupId, id)).run();
+
+    // Delete group
+    db.delete(schema.groups).where(eq(schema.groups.id, id)).run();
+  },
+
+  addGroupMember(member: GroupMember) {
+    const db = getDb();
+    db.insert(schema.groupMembers).values({
+      id: member.id,
+      groupId: member.groupId,
+      friendId: member.friendId,
+      createdAt: member.createdAt,
+    }).run();
+  },
+
+  removeGroupMember(groupId: string, friendId: string | null) {
+    const db = getDb();
+    const allMembers = db
+      .select()
+      .from(schema.groupMembers)
+      .where(eq(schema.groupMembers.groupId, groupId))
+      .all();
+
+    const target = allMembers.find((m) => m.friendId === friendId);
+    if (target) {
+      db.delete(schema.groupMembers)
+        .where(eq(schema.groupMembers.id, target.id))
+        .run();
+    }
+  },
+
+  // ─── Group Expenses ──────────────────────────────────────────────────
+  getGroupExpenses(groupId?: string): GroupExpense[] {
+    const db = getDb();
+    const query = groupId
+      ? db.select().from(schema.groupExpenses).where(eq(schema.groupExpenses.groupId, groupId)).orderBy(desc(schema.groupExpenses.date))
+      : db.select().from(schema.groupExpenses).orderBy(desc(schema.groupExpenses.date));
+    const expenseRows = query.all();
+
+    const participantRows = db.select().from(schema.groupExpenseParticipants).all();
+    const friendRows = db.select().from(schema.friends).all();
+    const friendMap = new Map(friendRows.map((f) => [f.id, f]));
+
+    return expenseRows.map((e) => ({
+      id: e.id,
+      groupId: e.groupId,
+      description: e.description,
+      amount: e.amount,
+      paidByFriendId: e.paidByFriendId,
+      date: e.date,
+      splitMethod: (e.splitMethod as any) || 'equal',
+      createdAt: e.createdAt,
+      updatedAt: e.updatedAt,
+      paidByFriend: e.paidByFriendId ? friendMap.get(e.paidByFriendId) || null : null,
+      participants: participantRows
+        .filter((p) => p.groupExpenseId === e.id)
+        .map((p) => ({
+          id: p.id,
+          groupExpenseId: p.groupExpenseId,
+          friendId: p.friendId,
+          shareAmount: p.shareAmount,
+          friend: p.friendId ? friendMap.get(p.friendId) || null : null,
+        })),
+    }));
+  },
+
+  addGroupExpense(
+    expense: Omit<GroupExpense, 'participants'>,
+    participants: GroupExpenseParticipant[]
+  ) {
+    const db = getDb();
+    db.insert(schema.groupExpenses).values({
+      id: expense.id,
+      groupId: expense.groupId,
+      description: expense.description,
+      amount: expense.amount,
+      paidByFriendId: expense.paidByFriendId,
+      date: expense.date,
+      splitMethod: expense.splitMethod,
+      createdAt: expense.createdAt,
+      updatedAt: expense.updatedAt,
+    }).run();
+
+    for (const p of participants) {
+      db.insert(schema.groupExpenseParticipants).values({
+        id: p.id,
+        groupExpenseId: p.groupExpenseId,
+        friendId: p.friendId,
+        shareAmount: p.shareAmount,
+      }).run();
+    }
+  },
+
+  updateGroupExpense(
+    id: string,
+    data: Partial<Omit<GroupExpense, 'participants'>>,
+    participants?: GroupExpenseParticipant[]
+  ) {
+    const db = getDb();
+    db.update(schema.groupExpenses)
+      .set(data as any)
+      .where(eq(schema.groupExpenses.id, id))
+      .run();
+
+    if (participants) {
+      db.delete(schema.groupExpenseParticipants)
+        .where(eq(schema.groupExpenseParticipants.groupExpenseId, id))
+        .run();
+
+      for (const p of participants) {
+        db.insert(schema.groupExpenseParticipants).values({
+          id: p.id,
+          groupExpenseId: p.groupExpenseId,
+          friendId: p.friendId,
+          shareAmount: p.shareAmount,
+        }).run();
+      }
+    }
+  },
+
+  deleteGroupExpense(id: string) {
+    const db = getDb();
+    db.delete(schema.groupExpenseParticipants)
+      .where(eq(schema.groupExpenseParticipants.groupExpenseId, id))
+      .run();
+    db.delete(schema.groupExpenses)
+      .where(eq(schema.groupExpenses.id, id))
+      .run();
+  },
+
+  // ─── Group Settlements ───────────────────────────────────────────────
+  getGroupSettlements(groupId?: string): GroupSettlement[] {
+    const db = getDb();
+    const query = groupId
+      ? db.select().from(schema.groupSettlements).where(eq(schema.groupSettlements.groupId, groupId)).orderBy(desc(schema.groupSettlements.date))
+      : db.select().from(schema.groupSettlements).orderBy(desc(schema.groupSettlements.date));
+    const settlementRows = query.all();
+
+    const friendRows = db.select().from(schema.friends).all();
+    const friendMap = new Map(friendRows.map((f) => [f.id, f]));
+
+    return settlementRows.map((s) => ({
+      id: s.id,
+      groupId: s.groupId,
+      fromFriendId: s.fromFriendId,
+      toFriendId: s.toFriendId,
+      amount: s.amount,
+      date: s.date,
+      createdAt: s.createdAt,
+      fromFriend: s.fromFriendId ? friendMap.get(s.fromFriendId) || null : null,
+      toFriend: s.toFriendId ? friendMap.get(s.toFriendId) || null : null,
+    }));
+  },
+
+  addGroupSettlement(settlement: GroupSettlement) {
+    const db = getDb();
+    db.insert(schema.groupSettlements).values({
+      id: settlement.id,
+      groupId: settlement.groupId,
+      fromFriendId: settlement.fromFriendId,
+      toFriendId: settlement.toFriendId,
+      amount: settlement.amount,
+      date: settlement.date,
+      createdAt: settlement.createdAt,
+    }).run();
+  },
+
+  deleteGroupSettlement(id: string) {
+    const db = getDb();
+    db.delete(schema.groupSettlements)
+      .where(eq(schema.groupSettlements.id, id))
+      .run();
+  },
+
 
   // ─── Settings ────────────────────────────────────────────────────────
   getSetting(key: string): string | null {

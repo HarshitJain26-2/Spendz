@@ -6,6 +6,11 @@ import type {
   SplitExpense,
   SplitParticipant,
   SplitStatus,
+  Group,
+  GroupMember,
+  GroupExpense,
+  GroupExpenseParticipant,
+  GroupSettlement,
 } from '@/types';
 
 export interface DatabaseRepository {
@@ -55,6 +60,32 @@ export interface DatabaseRepository {
   ): void;
   deleteSplitExpense(id: string): void;
   deleteSplitByTransactionId(transactionId: string): void;
+
+  // Groups
+  getGroups(): Group[];
+  addGroup(group: Group, members: GroupMember[]): void;
+  updateGroup(id: string, data: Partial<Group>): void;
+  deleteGroup(id: string): void;
+  addGroupMember(member: GroupMember): void;
+  removeGroupMember(groupId: string, friendId: string | null): void;
+
+  // Group Expenses
+  getGroupExpenses(groupId?: string): GroupExpense[];
+  addGroupExpense(
+    expense: Omit<GroupExpense, 'participants'>,
+    participants: GroupExpenseParticipant[]
+  ): void;
+  updateGroupExpense(
+    id: string,
+    data: Partial<Omit<GroupExpense, 'participants'>>,
+    participants?: GroupExpenseParticipant[]
+  ): void;
+  deleteGroupExpense(id: string): void;
+
+  // Group Settlements
+  getGroupSettlements(groupId?: string): GroupSettlement[];
+  addGroupSettlement(settlement: GroupSettlement): void;
+  deleteGroupSettlement(id: string): void;
 
   // Settings
   getSetting(key: string): string | null;
