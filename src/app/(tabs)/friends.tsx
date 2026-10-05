@@ -15,9 +15,11 @@ import { useTheme } from '@/hooks/useTheme';
 import { useBottomTabInset } from '@/hooks/useBottomTabInset';
 import { useFriendStore } from '@/store/friendStore';
 import { useSplitStore } from '@/store/splitStore';
+import { useGroupStore } from '@/store/groupStore';
 import { useAppStore } from '@/store/appStore';
 import { BalanceSummary, type FriendBalanceItem } from '@/components/friends/BalanceSummary';
 import { FriendCard } from '@/components/friends/FriendCard';
+import { GroupCard } from '@/components/friends/GroupCard';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { typography } from '@/theme/typography';
@@ -29,10 +31,16 @@ export default function FriendsScreen() {
   const bottomTabInset = useBottomTabInset(spacing.lg);
   const userProfile = useAppStore((s) => s.userProfile);
 
-  // Stable individual selectors to avoid unnecessary re-renders or getSnapshot warnings
+  const [activeTab, setActiveTab] = useState<'friends' | 'groups'>('friends');
+
+  // Friends store selectors
   const friends = useFriendStore((s) => s.friends);
   const splitExpenses = useSplitStore((s) => s.splitExpenses);
   const getFriendBalance = useSplitStore((s) => s.getFriendBalance);
+
+  // Groups store selectors
+  const groups = useGroupStore((s) => s.groups);
+  const getGroupBalanceForMe = useGroupStore((s) => s.getGroupBalanceForMe);
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -100,6 +108,21 @@ export default function FriendsScreen() {
     });
   }, [friends, searchQuery, friendBalanceMap]);
 
+  // 3. Group balances and filtering
+  const { groupBalanceMap } = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of groups) {
+      map.set(g.id, getGroupBalanceForMe(g.id));
+    }
+    return { groupBalanceMap: map };
+  }, [groups, getGroupBalanceForMe]);
+
+  const filteredGroups = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return groups;
+    return groups.filter((g) => g.name.toLowerCase().includes(query));
+  }, [groups, searchQuery]);
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -118,7 +141,7 @@ export default function FriendsScreen() {
               Spendz
             </Text>
             <Text style={[styles.brandSubtitle, { color: colors.textTertiary }]}>
-              Friends
+              {activeTab === 'friends' ? 'Friends' : 'Groups'}
             </Text>
           </View>
         </View>
@@ -146,8 +169,77 @@ export default function FriendsScreen() {
         </View>
       </View>
 
-      {/* 2. Friends Title Row with Count Pill and Add Friend button */}
-      <View style={styles.titleRow}>
+      {/* Segmented Control Switcher: [ Friends ] [ Groups ] */}
+      <View
+        style={[
+          styles.tabSwitcher,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+          },
+          shadows.sm,
+        ]}
+      >
+        <TouchableOpacity
+          onPress={() => {
+            setActiveTab('friends');
+            setSearchQuery('');
+          }}
+          activeOpacity={0.8}
+          style={[
+            styles.tabBtn,
+            activeTab === 'friends' && {
+              backgroundColor: colors.accent,
+              ...shadows.sm,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.tabBtnText,
+              {
+                color: activeTab === 'friends' ? '#FFFFFF' : colors.textSecondary,
+                fontFamily: activeTab === 'friends' ? typography.fontFamily.semiBold : typography.fontFamily.medium,
+              },
+            ]}
+          >
+            Friends
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => {
+            setActiveTab('groups');
+            setSearchQuery('');
+          }}
+          activeOpacity={0.8}
+          style={[
+            styles.tabBtn,
+            activeTab === 'groups' && {
+              backgroundColor: colors.accent,
+              ...shadows.sm,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.tabBtnText,
+              {
+                color: activeTab === 'groups' ? '#FFFFFF' : colors.textSecondary,
+                fontFamily: activeTab === 'groups' ? typography.fontFamily.semiBold : typography.fontFamily.medium,
+              },
+            ]}
+          >
+            Groups
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === 'friends' ? (
+        <>
+          {/* 2. Friends Title Row with Count Pill and Add Friend button */}
+          <View style={styles.titleRow}>
+
         <View style={styles.titleWithCount}>
           <Text style={[styles.pageTitle, { color: colors.textPrimary }]}>
             Friends
@@ -264,6 +356,114 @@ export default function FriendsScreen() {
           })
         )}
       </ScrollView>
+        </>
+      ) : (
+        <>
+          {/* Groups Title Row with Count Pill and New Group button */}
+          <View style={styles.titleRow}>
+            <View style={styles.titleWithCount}>
+              <Text style={[styles.pageTitle, { color: colors.textPrimary }]}>
+                Groups
+              </Text>
+              <View
+                style={[
+                  styles.countPill,
+                  {
+                    backgroundColor: colors.surfaceElevated,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.countText, { color: colors.textSecondary }]}>
+                  {groups.length} {groups.length === 1 ? 'group' : 'groups'}
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => router.push('/groups/create' as any)}
+              activeOpacity={0.7}
+              style={[
+                styles.addFriendBtn,
+                {
+                  backgroundColor: colors.accentLight,
+                  borderColor: colors.accent,
+                },
+              ]}
+            >
+              <Plus size={15} color={colors.accent} strokeWidth={2.4} />
+              <Text style={[styles.addFriendText, { color: colors.textPrimary }]}>
+                New Group
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Groups Search Bar */}
+          <View
+            style={[
+              styles.searchContainer,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+              },
+              shadows.sm,
+            ]}
+          >
+            <Search size={18} color={colors.textTertiary} />
+            <TextInput
+              placeholder="Search groups..."
+              placeholderTextColor={colors.textTertiary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              style={[styles.searchInput, { color: colors.textPrimary }]}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <X size={18} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Groups Content ScrollView */}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: bottomTabInset },
+            ]}
+          >
+            {groups.length === 0 ? (
+              <EmptyState
+                title="No groups yet"
+                description="Create a group to split expenses with multiple friends for trips, dinners, and events."
+                actionLabel="+ New Group"
+                onAction={() => router.push('/groups/create' as any)}
+              />
+            ) : filteredGroups.length === 0 ? (
+              <EmptyState
+                title="No groups found"
+                description={`No groups matching "${searchQuery}"`}
+                actionLabel="Clear Search"
+                onAction={() => setSearchQuery('')}
+              />
+            ) : (
+              filteredGroups.map((group) => {
+                const balance = groupBalanceMap.get(group.id) || 0;
+                const memberCount = group.members?.length || 1;
+                return (
+                  <GroupCard
+                    key={group.id}
+                    group={group}
+                    balance={balance}
+                    memberCount={memberCount}
+                    onPress={() => router.push(`/groups/${group.id}` as any)}
+                  />
+                );
+              })
+            )}
+          </ScrollView>
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -313,7 +513,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
   },
+  tabSwitcher: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.xl,
+    marginVertical: spacing.xs,
+    padding: 3,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    gap: 4,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBtnText: {
+    fontSize: 14,
+  },
   titleRow: {
+
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
