@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,10 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { Search, X, Bell, Plus } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useBottomTabInset } from '@/hooks/useBottomTabInset';
@@ -44,14 +45,38 @@ export default function FriendsScreen() {
   const groupSettlements = useGroupStore((s) => s.groupSettlements);
   const getGroupBalanceForMe = useGroupStore((s) => s.getGroupBalanceForMe);
 
-  // Reload persisted stores on focus to keep data freshly synced without manual hard refresh
+  const navigation = useNavigation();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const reloadAll = useCallback(() => {
+    useGroupStore.getState().loadGroups();
+    useFriendStore.getState().loadFriends();
+    useSplitStore.getState().loadSplitExpenses();
+  }, []);
+
+  // Reload persisted stores on focus (both tab focus & parent stack pop focus)
   useFocusEffect(
     useCallback(() => {
-      useGroupStore.getState().loadGroups();
-      useFriendStore.getState().loadFriends();
-      useSplitStore.getState().loadSplitExpenses();
-    }, [])
+      reloadAll();
+    }, [reloadAll])
   );
+
+  useEffect(() => {
+    const unsub1 = navigation.addListener('focus', reloadAll);
+    const parentNav = navigation.getParent();
+    const unsub2 = parentNav?.addListener('focus', reloadAll);
+
+    return () => {
+      unsub1();
+      unsub2?.();
+    };
+  }, [navigation, reloadAll]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    reloadAll();
+    setRefreshing(false);
+  }, [reloadAll]);
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -321,6 +346,14 @@ export default function FriendsScreen() {
           styles.scrollContent,
           { paddingBottom: bottomTabInset },
         ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
       >
         {/* Overall Balance Summary Card (only if friends exist) */}
         {friends.length > 0 && (
@@ -442,6 +475,14 @@ export default function FriendsScreen() {
               styles.scrollContent,
               { paddingBottom: bottomTabInset },
             ]}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.accent}
+                colors={[colors.accent]}
+              />
+            }
           >
             {groups.length === 0 ? (
               <EmptyState
@@ -459,11 +500,11 @@ export default function FriendsScreen() {
               />
             ) : (
               filteredGroups.map((group) => {
-                const balance = groupBalanceMap.get(group.id) || 0;
+                const balance = getGroupBalanceForMe(group.id);
                 const memberCount = group.members?.length || 1;
                 return (
                   <GroupCard
-                    key={group.id}
+                    key={`${group.id}-${balance}-${group.updatedAt}`}
                     group={group}
                     balance={balance}
                     memberCount={memberCount}

@@ -287,12 +287,8 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
     repository.updateGroup(data.groupId, { updatedAt: now });
 
-    set((state) => ({
-      groups: state.groups.map((g) =>
-        g.id === data.groupId ? { ...g, updatedAt: now } : g
-      ),
-      groupExpenses: [newExpense, ...state.groupExpenses],
-    }));
+    // Always immediately re-synchronize store with repository so Zustand state matches database
+    get().loadGroups();
 
     return newExpense;
   },
@@ -328,21 +324,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       repository.updateGroup(existing.groupId, { updatedAt: now });
     }
 
-    set((state) => ({
-      groups: existing?.groupId
-        ? state.groups.map((g) => (g.id === existing.groupId ? { ...g, updatedAt: now } : g))
-        : state.groups,
-      groupExpenses: state.groupExpenses.map((e) =>
-        e.id === expenseId
-          ? {
-              ...e,
-              ...updates,
-              participants: participantRecords,
-              paidByFriend: data.paidByFriendId ? friendMap.get(data.paidByFriendId) || null : null,
-            }
-          : e
-      ),
-    }));
+    get().loadGroups();
   },
 
   deleteGroupExpense: (expenseId) => {
@@ -355,12 +337,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       repository.updateGroup(target.groupId, { updatedAt: now });
     }
 
-    set((state) => ({
-      groups: target?.groupId
-        ? state.groups.map((g) => (g.id === target.groupId ? { ...g, updatedAt: now } : g))
-        : state.groups,
-      groupExpenses: state.groupExpenses.filter((e) => e.id !== expenseId),
-    }));
+    get().loadGroups();
   },
 
   addGroupSettlement: (data) => {
@@ -387,12 +364,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     repository.addGroupSettlement(newSettlement);
     repository.updateGroup(data.groupId, { updatedAt: now });
 
-    set((state) => ({
-      groups: state.groups.map((g) =>
-        g.id === data.groupId ? { ...g, updatedAt: now } : g
-      ),
-      groupSettlements: [newSettlement, ...state.groupSettlements],
-    }));
+    get().loadGroups();
 
     return newSettlement;
   },
@@ -407,12 +379,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       repository.updateGroup(target.groupId, { updatedAt: now });
     }
 
-    set((state) => ({
-      groups: target?.groupId
-        ? state.groups.map((g) => (g.id === target.groupId ? { ...g, updatedAt: now } : g))
-        : state.groups,
-      groupSettlements: state.groupSettlements.filter((s) => s.id !== settlementId),
-    }));
+    get().loadGroups();
   },
 
   getGroupById: (id) => {
@@ -440,7 +407,11 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     const expenses = groupExpenses.filter((e) => e.groupId === groupId);
     const settlements = groupSettlements.filter((s) => s.groupId === groupId);
 
-    const members = group.members || [];
+    const rawMembers = group.members || [];
+    const hasMe = rawMembers.some((m) => m.friendId === null);
+    const members: GroupMember[] = hasMe
+      ? rawMembers
+      : [{ id: `me-${groupId}`, groupId, friendId: null, createdAt: group.createdAt }, ...rawMembers];
     const memberIds = members.map((m) => m.friendId); // null or string
 
     // Map: friendId (or 'me') -> { paid: number, share: number, balanceWithMe: number }
@@ -526,9 +497,34 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   getGroupBalanceForMe: (groupId) => {
     // Current user's net balance in the group:
     // Positive = You are owed, Negative = You owe, 0 = Settled
-    const memberBalances = get().getGroupMemberBalances(groupId);
-    const myBalance = memberBalances.find((m) => m.friendId === null);
-    return myBalance ? myBalance.balance : 0;
+    const { groupExpenses, groupSettlements } = get();
+    const expenses = groupExpenses.filter((e) => e.groupId === groupId);
+    const settlements = groupSettlements.filter((s) => s.groupId === groupId);
+
+    let totalPaidByMe = 0;
+    let totalMyShare = 0;
+
+    for (const exp of expenses) {
+      if (exp.paidByFriendId === null) {
+        totalPaidByMe += Number(exp.amount) || 0;
+      }
+      const myPart = exp.participants?.find((p) => p.friendId === null);
+      if (myPart) {
+        totalMyShare += Number(myPart.shareAmount) || 0;
+      }
+    }
+
+    for (const setl of settlements) {
+      const amt = Number(setl.amount) || 0;
+      if (setl.fromFriendId === null) {
+        totalPaidByMe += amt;
+      }
+      if (setl.toFriendId === null) {
+        totalMyShare += amt;
+      }
+    }
+
+    return Math.round((totalPaidByMe - totalMyShare) * 100) / 100;
   },
 
   getGroupSummary: (groupId) => {

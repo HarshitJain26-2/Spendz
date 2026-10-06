@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,10 @@ import {
   Modal,
   Alert,
   TextInput,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import {
   ArrowLeft,
   Settings,
@@ -55,11 +56,29 @@ export default function GroupDetailScreen() {
   const getGroupBalanceForMe = useGroupStore((s) => s.getGroupBalanceForMe);
   const getGroupSummary = useGroupStore((s) => s.getGroupSummary);
 
+  const navigation = useNavigation();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const reloadData = useCallback(() => {
+    useGroupStore.getState().loadGroups();
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      useGroupStore.getState().loadGroups();
-    }, [])
+      reloadData();
+    }, [reloadData])
   );
+
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', reloadData);
+    return unsub;
+  }, [navigation, reloadData]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    reloadData();
+    setRefreshing(false);
+  }, [reloadData]);
 
   const group = useMemo(() => groups.find((g) => g.id === id), [groups, id]);
 
@@ -258,6 +277,14 @@ export default function GroupDetailScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
       >
         {/* Overview Balance Card */}
         <View

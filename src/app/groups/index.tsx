@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,10 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { ArrowLeft, Search, X, Plus } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useGroupStore } from '@/store/groupStore';
@@ -20,6 +21,7 @@ import { formatCurrency } from '@/utils/currency';
 
 export default function GroupsScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { colors } = useTheme();
 
   const groups = useGroupStore((s) => s.groups);
@@ -27,11 +29,28 @@ export default function GroupsScreen() {
   const groupSettlements = useGroupStore((s) => s.groupSettlements);
   const getGroupBalanceForMe = useGroupStore((s) => s.getGroupBalanceForMe);
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  const reloadData = useCallback(() => {
+    useGroupStore.getState().loadGroups();
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      useGroupStore.getState().loadGroups();
-    }, [])
+      reloadData();
+    }, [reloadData])
   );
+
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', reloadData);
+    return unsub;
+  }, [navigation, reloadData]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    reloadData();
+    setRefreshing(false);
+  }, [reloadData]);
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -147,6 +166,14 @@ export default function GroupsScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
       >
         {/* Total Group Balance Summary (if groups exist) */}
         {groups.length > 0 && (totalOwedToMe > 0 || totalIOwe > 0) && (
@@ -198,11 +225,11 @@ export default function GroupsScreen() {
           />
         ) : (
           filteredGroups.map((group) => {
-            const balance = groupBalanceMap.get(group.id) || 0;
+            const balance = getGroupBalanceForMe(group.id);
             const memberCount = group.members?.length || 1;
             return (
               <GroupCard
-                key={group.id}
+                key={`${group.id}-${balance}-${group.updatedAt}`}
                 group={group}
                 balance={balance}
                 memberCount={memberCount}
