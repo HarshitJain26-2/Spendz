@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { ArrowLeft, Search, X, Plus } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useGroupStore } from '@/store/groupStore';
@@ -23,7 +23,15 @@ export default function GroupsScreen() {
   const { colors } = useTheme();
 
   const groups = useGroupStore((s) => s.groups);
+  const groupExpenses = useGroupStore((s) => s.groupExpenses);
+  const groupSettlements = useGroupStore((s) => s.groupSettlements);
   const getGroupBalanceForMe = useGroupStore((s) => s.getGroupBalanceForMe);
+
+  useFocusEffect(
+    useCallback(() => {
+      useGroupStore.getState().loadGroups();
+    }, [])
+  );
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -48,7 +56,7 @@ export default function GroupsScreen() {
       totalOwedToMe: owed,
       totalIOwe: owe,
     };
-  }, [groups, getGroupBalanceForMe]);
+  }, [groups, groupExpenses, groupSettlements, getGroupBalanceForMe]);
 
   // Filter groups by search query
   const filteredGroups = useMemo(() => {

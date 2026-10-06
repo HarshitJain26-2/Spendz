@@ -226,7 +226,11 @@ export default function AddOrEditGroupExpenseScreen() {
         });
       }
 
-      router.back();
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace(`/groups/${group.id}` as any);
+      }
     } catch (e: any) {
       setError(e?.message || 'Failed to save group expense');
       setIsSubmitting(false);
@@ -245,7 +249,11 @@ export default function AddOrEditGroupExpenseScreen() {
           style: 'destructive',
           onPress: () => {
             deleteGroupExpense(expenseId);
-            router.back();
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace(`/groups/${group.id}` as any);
+            }
           },
         },
       ]

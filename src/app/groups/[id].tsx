@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import {
   ArrowLeft,
   Settings,
@@ -54,6 +54,12 @@ export default function GroupDetailScreen() {
   const getGroupMemberBalances = useGroupStore((s) => s.getGroupMemberBalances);
   const getGroupBalanceForMe = useGroupStore((s) => s.getGroupBalanceForMe);
   const getGroupSummary = useGroupStore((s) => s.getGroupSummary);
+
+  useFocusEffect(
+    useCallback(() => {
+      useGroupStore.getState().loadGroups();
+    }, [])
+  );
 
   const group = useMemo(() => groups.find((g) => g.id === id), [groups, id]);
 

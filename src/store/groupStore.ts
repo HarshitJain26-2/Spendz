@@ -285,7 +285,12 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       participantRecords
     );
 
+    repository.updateGroup(data.groupId, { updatedAt: now });
+
     set((state) => ({
+      groups: state.groups.map((g) =>
+        g.id === data.groupId ? { ...g, updatedAt: now } : g
+      ),
       groupExpenses: [newExpense, ...state.groupExpenses],
     }));
 
@@ -295,6 +300,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   updateGroupExpense: (expenseId, data) => {
     const now = getTodayISO();
     const amount = Number(data.amount) || 0;
+    const existing = get().groupExpenses.find((e) => e.id === expenseId);
 
     const friends = useFriendStore.getState().friends;
     const friendMap = new Map(friends.map((f) => [f.id, f]));
@@ -318,7 +324,14 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
     repository.updateGroupExpense(expenseId, updates, participantRecords);
 
+    if (existing?.groupId) {
+      repository.updateGroup(existing.groupId, { updatedAt: now });
+    }
+
     set((state) => ({
+      groups: existing?.groupId
+        ? state.groups.map((g) => (g.id === existing.groupId ? { ...g, updatedAt: now } : g))
+        : state.groups,
       groupExpenses: state.groupExpenses.map((e) =>
         e.id === expenseId
           ? {
@@ -333,9 +346,19 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   },
 
   deleteGroupExpense: (expenseId) => {
+    const target = get().groupExpenses.find((e) => e.id === expenseId);
+    const now = getTodayISO();
+
     repository.deleteGroupExpense(expenseId);
 
+    if (target?.groupId) {
+      repository.updateGroup(target.groupId, { updatedAt: now });
+    }
+
     set((state) => ({
+      groups: target?.groupId
+        ? state.groups.map((g) => (g.id === target.groupId ? { ...g, updatedAt: now } : g))
+        : state.groups,
       groupExpenses: state.groupExpenses.filter((e) => e.id !== expenseId),
     }));
   },
@@ -362,8 +385,12 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     };
 
     repository.addGroupSettlement(newSettlement);
+    repository.updateGroup(data.groupId, { updatedAt: now });
 
     set((state) => ({
+      groups: state.groups.map((g) =>
+        g.id === data.groupId ? { ...g, updatedAt: now } : g
+      ),
       groupSettlements: [newSettlement, ...state.groupSettlements],
     }));
 
@@ -371,9 +398,19 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   },
 
   deleteGroupSettlement: (settlementId) => {
+    const target = get().groupSettlements.find((s) => s.id === settlementId);
+    const now = getTodayISO();
+
     repository.deleteGroupSettlement(settlementId);
 
+    if (target?.groupId) {
+      repository.updateGroup(target.groupId, { updatedAt: now });
+    }
+
     set((state) => ({
+      groups: target?.groupId
+        ? state.groups.map((g) => (g.id === target.groupId ? { ...g, updatedAt: now } : g))
+        : state.groups,
       groupSettlements: state.groupSettlements.filter((s) => s.id !== settlementId),
     }));
   },

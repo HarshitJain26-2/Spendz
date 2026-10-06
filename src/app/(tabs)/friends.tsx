@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Search, X, Bell, Plus } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useBottomTabInset } from '@/hooks/useBottomTabInset';
@@ -40,7 +40,18 @@ export default function FriendsScreen() {
 
   // Groups store selectors
   const groups = useGroupStore((s) => s.groups);
+  const groupExpenses = useGroupStore((s) => s.groupExpenses);
+  const groupSettlements = useGroupStore((s) => s.groupSettlements);
   const getGroupBalanceForMe = useGroupStore((s) => s.getGroupBalanceForMe);
+
+  // Reload persisted stores on focus to keep data freshly synced without manual hard refresh
+  useFocusEffect(
+    useCallback(() => {
+      useGroupStore.getState().loadGroups();
+      useFriendStore.getState().loadFriends();
+      useSplitStore.getState().loadSplitExpenses();
+    }, [])
+  );
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -115,7 +126,7 @@ export default function FriendsScreen() {
       map.set(g.id, getGroupBalanceForMe(g.id));
     }
     return { groupBalanceMap: map };
-  }, [groups, getGroupBalanceForMe]);
+  }, [groups, groupExpenses, groupSettlements, getGroupBalanceForMe]);
 
   const filteredGroups = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
