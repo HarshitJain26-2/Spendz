@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
-import { ArrowLeft, Search, X, Plus } from 'lucide-react-native';
+import { ArrowLeft, Search, X, Plus, QrCode } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useGroupStore } from '@/store/groupStore';
 import { GroupCard } from '@/components/friends/GroupCard';
@@ -118,22 +118,41 @@ export default function GroupsScreen() {
           </View>
         </View>
 
-        <TouchableOpacity
-          onPress={() => router.push('/groups/create' as any)}
-          activeOpacity={0.7}
-          style={[
-            styles.newGroupBtn,
-            {
-              backgroundColor: colors.accentLight,
-              borderColor: colors.accent,
-            },
-          ]}
-        >
-          <Plus size={15} color={colors.accent} strokeWidth={2.4} />
-          <Text style={[styles.newGroupText, { color: colors.textPrimary }]}>
-            New Group
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.headerRightActions}>
+          <TouchableOpacity
+            onPress={() => router.push('/groups/join' as any)}
+            activeOpacity={0.7}
+            style={[
+              styles.joinGroupBtn,
+              {
+                backgroundColor: colors.surfaceElevated,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <QrCode size={13} color={colors.textPrimary} strokeWidth={2.2} />
+            <Text style={[styles.joinGroupText, { color: colors.textPrimary }]}>
+              Join
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push('/groups/create' as any)}
+            activeOpacity={0.7}
+            style={[
+              styles.newGroupBtn,
+              {
+                backgroundColor: colors.accentLight,
+                borderColor: colors.accent,
+              },
+            ]}
+          >
+            <Plus size={15} color={colors.accent} strokeWidth={2.4} />
+            <Text style={[styles.newGroupText, { color: colors.textPrimary }]}>
+              New Group
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search Bar */}
@@ -281,6 +300,24 @@ const styles = StyleSheet.create({
   countText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 12,
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  joinGroupBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    gap: 4,
+  },
+  joinGroupText: {
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 13,
   },
   newGroupBtn: {
     flexDirection: 'row',

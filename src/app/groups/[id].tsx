@@ -25,6 +25,7 @@ import {
   Edit2,
   Check,
   ArrowRight,
+  UserPlus,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useGroupStore } from '@/store/groupStore';
@@ -265,13 +266,30 @@ export default function GroupDetailScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity
-          onPress={() => router.push(`/groups/${group.id}/edit` as any)}
-          style={[styles.backBtn, { borderColor: colors.border }]}
-          activeOpacity={0.7}
-        >
-          <Settings size={18} color={colors.textPrimary} />
-        </TouchableOpacity>
+        <View style={styles.headerRightActions}>
+          <TouchableOpacity
+            onPress={() => router.push(`/groups/invite?groupId=${group.id}` as any)}
+            style={[
+              styles.inviteHeaderBtn,
+              {
+                backgroundColor: colors.accentLight,
+                borderColor: colors.accent,
+              },
+            ]}
+            activeOpacity={0.7}
+          >
+            <UserPlus size={15} color={colors.accent} strokeWidth={2.4} />
+            <Text style={[styles.inviteHeaderBtnText, { color: colors.textPrimary }]}>Invite</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push(`/groups/${group.id}/edit` as any)}
+            style={[styles.backBtn, { borderColor: colors.border }]}
+            activeOpacity={0.7}
+          >
+            <Settings size={18} color={colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -796,6 +814,24 @@ export default function GroupDetailScreen() {
               })}
             </View>
 
+            {/* Invite to Group Button */}
+            <TouchableOpacity
+              onPress={() => router.push(`/groups/invite?groupId=${group.id}` as any)}
+              style={[
+                styles.inviteMembersBtn,
+                {
+                  backgroundColor: colors.accentLight,
+                  borderColor: colors.accent,
+                },
+              ]}
+              activeOpacity={0.7}
+            >
+              <UserPlus size={16} color={colors.accent} strokeWidth={2.4} />
+              <Text style={[styles.inviteMembersText, { color: colors.textPrimary }]}>
+                Invite Members (Code & QR)
+              </Text>
+            </TouchableOpacity>
+
             {/* Manage Group Button */}
             <TouchableOpacity
               onPress={() => router.push(`/groups/${group.id}/edit` as any)}
@@ -1189,6 +1225,24 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  inviteHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    gap: 4,
+  },
+  inviteHeaderBtnText: {
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 13,
+  },
   backBtn: {
     width: 38,
     height: 38,
@@ -1460,6 +1514,20 @@ const styles = StyleSheet.create({
   inlineSettleText: {
     fontFamily: typography.fontFamily.semiBold,
     fontSize: 12,
+  },
+  inviteMembersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    marginTop: spacing.lg,
+    gap: spacing.sm,
+  },
+  inviteMembersText: {
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: 14,
   },
   manageGroupBtn: {
     flexDirection: 'row',
