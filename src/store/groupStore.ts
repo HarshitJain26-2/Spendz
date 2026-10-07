@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type {
   Group,
   GroupMember,
+  GroupInvite,
   GroupExpense,
   GroupExpenseParticipant,
   GroupSettlement,
@@ -10,7 +11,18 @@ import type {
 } from '@/types';
 import { repository } from '@/database';
 import { generateId, getTodayISO } from '@/utils/date';
+import { generateInviteCode } from '@/utils/inviteCode';
 import { useFriendStore } from './friendStore';
+import { useAppStore } from './appStore';
+import { useAuthStore } from './authStore';
+
+export type InviteValidationResult =
+  | { status: 'valid'; invite: GroupInvite; group: Group; memberNames: string[] }
+  | { status: 'invalid'; message: string }
+  | { status: 'inactive'; message: string }
+  | { status: 'expired'; message: string }
+  | { status: 'group_deleted'; message: string }
+  | { status: 'already_member'; group: Group; memberNames: string[]; message: string };
 
 interface GroupState {
   groups: Group[];
@@ -73,6 +85,14 @@ interface GroupState {
     yourShare: number;
     netBalance: number;
   };
+
+  // Group Invites & Joining
+  getOrCreateInvite: (groupId: string) => GroupInvite;
+  getInviteByCode: (code: string) => GroupInvite | null;
+  revokeInvite: (inviteId: string) => void;
+  validateInvite: (code: string) => InviteValidationResult;
+  joinGroupByCode: (code: string) => { success: boolean; message: string; group?: Group };
+  refreshGroupMembers: (groupId: string) => void;
 }
 
 export const useGroupStore = create<GroupState>((set, get) => ({
@@ -475,6 +495,8 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
     const friends = useFriendStore.getState().friends;
     const friendMap = new Map(friends.map((f) => [f.id, f]));
+    const currentProfile = useAppStore.getState().userProfile;
+    const currentUserId = currentProfile.id || useAuthStore.getState().user?.id;
 
     return members.map((m) => {
       const mId = m.friendId;
@@ -484,10 +506,13 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       const withMe = mId === null ? overallNet : balanceWithMeMap.get(mId) || 0;
       const friendObj = mId ? friendMap.get(mId) || m.friend || null : null;
 
+      const isMe = mId === null && (!m.userId || m.userId === currentUserId);
+      const displayName = isMe ? 'You' : m.name || friendObj?.name || 'Member';
+
       return {
         friendId: mId,
         friend: friendObj,
-        name: mId === null ? 'You' : friendObj?.name || 'Friend',
+        name: displayName,
         balance: overallNet,
         balanceWithMe: withMe,
       };
@@ -557,5 +582,169 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       yourShare,
       netBalance,
     };
+  },
+
+  // ─── Group Invites & Joining ──────────────────────────────────────────
+  getOrCreateInvite: (groupId) => {
+    const group = get().getGroupById(groupId) || repository.getGroups().find((g) => g.id === groupId);
+    const activeInvite = repository.getActiveInviteByGroupId(groupId);
+    if (activeInvite) {
+      return activeInvite;
+    }
+
+    const currentProfile = useAppStore.getState().userProfile;
+    const authUser = useAuthStore.getState().user;
+    const currentUserId = currentProfile.id || authUser?.id || 'user_spendz';
+
+    const newInvite: GroupInvite = {
+      id: generateId(),
+      groupId,
+      code: generateInviteCode(group?.name),
+      createdBy: currentUserId,
+      createdAt: getTodayISO(),
+      expiresAt: null, // V1 default: Never expires unless revoked
+      isActive: true,
+    };
+
+    repository.createGroupInvite(newInvite);
+    get().loadGroups();
+    return newInvite;
+  },
+
+  getInviteByCode: (code) => {
+    return repository.getInviteByCode(code.trim().toUpperCase());
+  },
+
+  revokeInvite: (inviteId) => {
+    repository.revokeGroupInvite(inviteId);
+    get().loadGroups();
+  },
+
+  validateInvite: (code) => {
+    const trimmed = (code || '').trim().toUpperCase();
+    if (!trimmed) {
+      return { status: 'invalid', message: 'This invite code is not valid.' };
+    }
+
+    const invite = repository.getInviteByCode(trimmed);
+    if (!invite) {
+      return { status: 'invalid', message: 'This invite code is not valid.' };
+    }
+
+    if (!invite.isActive) {
+      return { status: 'inactive', message: 'This invite is no longer active.' };
+    }
+
+    if (invite.expiresAt && new Date(invite.expiresAt).getTime() < Date.now()) {
+      return { status: 'expired', message: 'This invite has expired.' };
+    }
+
+    const group =
+      get().getGroupById(invite.groupId) ||
+      repository.getGroups().find((g) => g.id === invite.groupId);
+
+    if (!group) {
+      return { status: 'group_deleted', message: 'This group is no longer available.' };
+    }
+
+    const currentProfile = useAppStore.getState().userProfile;
+    const authUser = useAuthStore.getState().user;
+    const currentUserId = currentProfile.id || authUser?.id;
+    const currentUserName = currentProfile.fullName || currentProfile.name;
+
+    const members = group.members || [];
+    const memberNames = members.map((m) => {
+      if (m.friend) return m.friend.name;
+      if (m.name) return m.name;
+      if (m.friendId === null) return 'Creator';
+      return 'Member';
+    });
+
+    const isAlreadyMember = members.some((m) => {
+      if (currentUserId && m.userId === currentUserId) return true;
+      if (m.friendId === null && currentUserId && invite.createdBy === currentUserId) return true;
+      if (
+        currentUserName &&
+        m.name &&
+        m.name.trim().toLowerCase() === currentUserName.trim().toLowerCase()
+      ) {
+        return true;
+      }
+      return false;
+    });
+
+    if (isAlreadyMember) {
+      return {
+        status: 'already_member',
+        group,
+        memberNames,
+        message: "You're already a member of this group.",
+      };
+    }
+
+    return {
+      status: 'valid',
+      invite,
+      group,
+      memberNames,
+    };
+  },
+
+  joinGroupByCode: (code) => {
+    const validation = get().validateInvite(code);
+    if (validation.status === 'already_member') {
+      return {
+        success: false,
+        message: "You're already a member of this group.",
+        group: validation.group,
+      };
+    }
+
+    if (validation.status !== 'valid') {
+      return {
+        success: false,
+        message: validation.message,
+      };
+    }
+
+    const currentProfile = useAppStore.getState().userProfile;
+    const authUser = useAuthStore.getState().user;
+    const currentUserId = currentProfile.id || authUser?.id || generateId();
+    const currentUserName =
+      currentProfile.fullName ||
+      currentProfile.name ||
+      authUser?.user_metadata?.full_name ||
+      authUser?.user_metadata?.name ||
+      'Member';
+    const currentAvatar = currentProfile.avatarUri || null;
+
+    const newMember: GroupMember = {
+      id: generateId(),
+      groupId: validation.group.id,
+      friendId: null,
+      userId: currentUserId,
+      name: currentUserName,
+      avatarUrl: currentAvatar,
+      role: 'member',
+      createdAt: getTodayISO(),
+    };
+
+    const res = repository.joinGroup(validation.group.id, newMember);
+    if (!res.success) {
+      return { success: false, message: res.message || 'Failed to join group.' };
+    }
+
+    get().loadGroups();
+    const updatedGroup = get().getGroupById(validation.group.id);
+
+    return {
+      success: true,
+      message: `Successfully joined ${validation.group.name}!`,
+      group: updatedGroup,
+    };
+  },
+
+  refreshGroupMembers: (groupId) => {
+    get().loadGroups();
   },
 }));
