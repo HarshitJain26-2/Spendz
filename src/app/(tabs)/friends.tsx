@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
-import { Search, X, Bell, Plus } from 'lucide-react-native';
+import { Search, X, Bell, Plus, QrCode } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useBottomTabInset } from '@/hooks/useBottomTabInset';
 import { useFriendStore } from '@/store/friendStore';
@@ -424,22 +424,41 @@ export default function FriendsScreen() {
               </View>
             </View>
 
-            <TouchableOpacity
-              onPress={() => router.push('/groups/create' as any)}
-              activeOpacity={0.7}
-              style={[
-                styles.addFriendBtn,
-                {
-                  backgroundColor: colors.accentLight,
-                  borderColor: colors.accent,
-                },
-              ]}
-            >
-              <Plus size={15} color={colors.accent} strokeWidth={2.4} />
-              <Text style={[styles.addFriendText, { color: colors.textPrimary }]}>
-                New Group
-              </Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <TouchableOpacity
+                onPress={() => router.push('/groups/join' as any)}
+                activeOpacity={0.7}
+                style={[
+                  styles.addFriendBtn,
+                  {
+                    backgroundColor: colors.surfaceElevated,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <QrCode size={13} color={colors.textPrimary} strokeWidth={2.2} />
+                <Text style={[styles.addFriendText, { color: colors.textPrimary }]}>
+                  Join
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => router.push('/groups/create' as any)}
+                activeOpacity={0.7}
+                style={[
+                  styles.addFriendBtn,
+                  {
+                    backgroundColor: colors.accentLight,
+                    borderColor: colors.accent,
+                  },
+                ]}
+              >
+                <Plus size={15} color={colors.accent} strokeWidth={2.4} />
+                <Text style={[styles.addFriendText, { color: colors.textPrimary }]}>
+                  New Group
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Groups Search Bar */}

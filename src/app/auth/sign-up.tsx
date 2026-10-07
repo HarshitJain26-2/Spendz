@@ -21,6 +21,7 @@ import { spacing, borderRadius } from '@/theme/spacing';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/utils/authErrors';
 import { useAppStore } from '@/store/appStore';
+import { useAuthStore } from '@/store/authStore';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -133,7 +134,13 @@ export default function SignUpScreen() {
           name: trimmedName,
           email: trimmedEmail,
         });
-        router.replace('/');
+        const dest = useAuthStore.getState().intendedDestination;
+        if (dest) {
+          useAuthStore.getState().setIntendedDestination(null);
+          router.replace(dest as any);
+        } else {
+          router.replace('/');
+        }
       } else if (data.user) {
         // Provider requires email confirmation
         setEmailConfirmationRequired(true);

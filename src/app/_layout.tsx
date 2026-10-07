@@ -23,6 +23,8 @@ import { useAuthStore } from '@/store/authStore';
 import { useTheme } from '@/hooks/useTheme';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius } from '@/theme/spacing';
+import * as Linking from 'expo-linking';
+import { parseInviteCodeFromUrlOrInput } from '@/utils/inviteCode';
 import { initAlertPolyfill } from '@/utils/alert';
 
 initAlertPolyfill();
@@ -126,6 +128,45 @@ export default function RootLayout() {
 
   const isLoading = !fontsLoaded || !isDbReady || !isHydrated || !isAuthInitialized || initStatus !== 'ready';
 
+  const router = useRouter();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  useEffect(() => {
+    if (isLoading || initStatus !== 'ready') return;
+
+    const handleUrl = (event: { url: string }) => {
+      try {
+        const parsedCode = parseInviteCodeFromUrlOrInput(event.url);
+        if (parsedCode) {
+          const targetPath = `/groups/join?code=${encodeURIComponent(parsedCode)}`;
+          if (!isAuthenticated) {
+            useAuthStore.getState().setIntendedDestination(targetPath);
+            router.push('/auth/sign-in');
+          } else {
+            router.push(targetPath as any);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to handle deep link URL:', err);
+      }
+    };
+
+    const sub = Linking.addEventListener('url', handleUrl);
+    Linking.getInitialURL()
+      .then((url) => {
+        if (url) {
+          handleUrl({ url });
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to get initial URL:', err);
+      });
+
+    return () => {
+      sub.remove();
+    };
+  }, [isLoading, initStatus, isAuthenticated, router]);
+
   return (
     <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -152,6 +193,7 @@ export default function RootLayout() {
         <Stack.Screen name="transaction" />
         <Stack.Screen name="friends" />
         <Stack.Screen name="groups" />
+        <Stack.Screen name="group-invite" />
         <Stack.Screen name="insights" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="reports" />
