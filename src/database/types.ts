@@ -8,6 +8,7 @@ import type {
   SplitStatus,
   Group,
   GroupMember,
+  GroupInvite,
   GroupExpense,
   GroupExpenseParticipant,
   GroupSettlement,
@@ -68,6 +69,15 @@ export interface DatabaseRepository {
   deleteGroup(id: string): void;
   addGroupMember(member: GroupMember): void;
   removeGroupMember(groupId: string, friendId: string | null): void;
+  getGroupMembers(groupId: string): GroupMember[];
+  joinGroup(groupId: string, member: GroupMember): { success: boolean; message?: string };
+
+  // Group Invites
+  createGroupInvite(invite: GroupInvite): void;
+  getInviteByCode(code: string): GroupInvite | null;
+  getInvitesByGroupId(groupId: string): GroupInvite[];
+  getActiveInviteByGroupId(groupId: string): GroupInvite | null;
+  revokeGroupInvite(inviteId: string): void;
 
   // Group Expenses
   getGroupExpenses(groupId?: string): GroupExpense[];

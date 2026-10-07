@@ -9,6 +9,7 @@ import type {
   SplitStatus,
   Group,
   GroupMember,
+  GroupInvite,
   GroupExpense,
   GroupExpenseParticipant,
   GroupSettlement,
@@ -26,6 +27,7 @@ const STORAGE_KEYS = {
   SETTINGS: 'spendz_web_settings',
   GROUPS: 'spendz_web_groups',
   GROUP_MEMBERS: 'spendz_web_group_members',
+  GROUP_INVITES: 'spendz_web_group_invites',
   GROUP_EXPENSES: 'spendz_web_group_expenses',
   GROUP_PARTICIPANTS: 'spendz_web_group_expense_participants',
   GROUP_SETTLEMENTS: 'spendz_web_group_settlements',
@@ -352,18 +354,27 @@ export const repository: DatabaseRepository = {
   getGroups(): Group[] {
     const groups = getStorage<Group[]>(STORAGE_KEYS.GROUPS, []);
     const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
+    const invites = getStorage<GroupInvite[]>(STORAGE_KEYS.GROUP_INVITES, []);
     const friends = this.getFriends();
     const friendMap = new Map(friends.map((f) => [f.id, f]));
 
-    return groups.map((g) => ({
-      ...g,
-      members: members
-        .filter((m) => m.groupId === g.id)
-        .map((m) => ({
-          ...m,
-          friend: m.friendId ? friendMap.get(m.friendId) || null : null,
-        })),
-    }));
+    return groups.map((g) => {
+      const activeInvite =
+        invites.find(
+          (i) => i.groupId === g.id && i.isActive && (!i.expiresAt || new Date(i.expiresAt).getTime() > Date.now())
+        ) || null;
+
+      return {
+        ...g,
+        activeInvite,
+        members: members
+          .filter((m) => m.groupId === g.id)
+          .map((m) => ({
+            ...m,
+            friend: m.friendId ? friendMap.get(m.friendId) || null : null,
+          })),
+      };
+    });
   },
 
   addGroup(group: Group, members: GroupMember[]) {
@@ -389,6 +400,10 @@ export const repository: DatabaseRepository = {
     const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
     setStorage(STORAGE_KEYS.GROUP_MEMBERS, members.filter((m) => m.groupId !== id));
 
+    // Delete group invites
+    const invites = getStorage<GroupInvite[]>(STORAGE_KEYS.GROUP_INVITES, []);
+    setStorage(STORAGE_KEYS.GROUP_INVITES, invites.filter((i) => i.groupId !== id));
+
     // Delete group expenses & participants
     const expenses = getStorage<Omit<GroupExpense, 'participants'>[]>(STORAGE_KEYS.GROUP_EXPENSES, []);
     const groupExpenseIds = new Set(expenses.filter((e) => e.groupId === id).map((e) => e.id));
@@ -405,7 +420,13 @@ export const repository: DatabaseRepository = {
   addGroupMember(member: GroupMember) {
     const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
     // Prevent duplicate member in same group
-    const exists = members.some((m) => m.groupId === member.groupId && m.friendId === member.friendId);
+    const exists = members.some(
+      (m) =>
+        m.groupId === member.groupId &&
+        ((member.userId && m.userId === member.userId) ||
+          (member.friendId && m.friendId === member.friendId) ||
+          (member.name && m.name && m.name.toLowerCase() === member.name.toLowerCase()))
+    );
     if (!exists) {
       members.push(member);
       setStorage(STORAGE_KEYS.GROUP_MEMBERS, members);
@@ -416,6 +437,88 @@ export const repository: DatabaseRepository = {
     const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
     const filtered = members.filter((m) => !(m.groupId === groupId && m.friendId === friendId));
     setStorage(STORAGE_KEYS.GROUP_MEMBERS, filtered);
+  },
+
+  getGroupMembers(groupId: string): GroupMember[] {
+    const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
+    const friends = this.getFriends();
+    const friendMap = new Map(friends.map((f) => [f.id, f]));
+
+    return members
+      .filter((m) => m.groupId === groupId)
+      .map((m) => ({
+        ...m,
+        friend: m.friendId ? friendMap.get(m.friendId) || null : null,
+      }));
+  },
+
+  joinGroup(groupId: string, member: GroupMember): { success: boolean; message?: string } {
+    const groups = getStorage<Group[]>(STORAGE_KEYS.GROUPS, []);
+    const grp = groups.find((g) => g.id === groupId);
+    if (!grp) {
+      return { success: false, message: 'This group is no longer available.' };
+    }
+
+    const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
+    const groupMembers = members.filter((m) => m.groupId === groupId);
+
+    const isAlreadyMember = groupMembers.some(
+      (m) =>
+        (member.userId && m.userId === member.userId) ||
+        (member.friendId && m.friendId === member.friendId) ||
+        (member.name && m.name && m.name.toLowerCase() === member.name.toLowerCase())
+    );
+
+    if (isAlreadyMember) {
+      return { success: false, message: "You're already a member of this group." };
+    }
+
+    members.push(member);
+    setStorage(STORAGE_KEYS.GROUP_MEMBERS, members);
+    return { success: true };
+  },
+
+  // ─── Group Invites ─────────────────────────────────────────────────────
+  createGroupInvite(invite: GroupInvite) {
+    const invites = getStorage<GroupInvite[]>(STORAGE_KEYS.GROUP_INVITES, []);
+    // Invalidate existing invites for this group to maintain 1 active invite per group
+    const updated = invites.map((i) =>
+      i.groupId === invite.groupId ? { ...i, isActive: false } : i
+    );
+    updated.unshift({
+      ...invite,
+      code: invite.code.trim().toUpperCase(),
+    });
+    setStorage(STORAGE_KEYS.GROUP_INVITES, updated);
+  },
+
+  getInviteByCode(code: string): GroupInvite | null {
+    const invites = getStorage<GroupInvite[]>(STORAGE_KEYS.GROUP_INVITES, []);
+    const upperCode = code.trim().toUpperCase();
+    return invites.find((i) => i.code.toUpperCase() === upperCode) || null;
+  },
+
+  getInvitesByGroupId(groupId: string): GroupInvite[] {
+    const invites = getStorage<GroupInvite[]>(STORAGE_KEYS.GROUP_INVITES, []);
+    return invites.filter((i) => i.groupId === groupId);
+  },
+
+  getActiveInviteByGroupId(groupId: string): GroupInvite | null {
+    const invites = getStorage<GroupInvite[]>(STORAGE_KEYS.GROUP_INVITES, []);
+    const active = invites.find((i) => {
+      if (i.groupId !== groupId || !i.isActive) return false;
+      if (i.expiresAt && new Date(i.expiresAt).getTime() < Date.now()) return false;
+      return true;
+    });
+    return active || null;
+  },
+
+  revokeGroupInvite(inviteId: string) {
+    const invites = getStorage<GroupInvite[]>(STORAGE_KEYS.GROUP_INVITES, []);
+    const updated = invites.map((i) =>
+      i.id === inviteId ? { ...i, isActive: false } : i
+    );
+    setStorage(STORAGE_KEYS.GROUP_INVITES, updated);
   },
 
   // ─── Group Expenses ──────────────────────────────────────────────────

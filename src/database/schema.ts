@@ -89,8 +89,23 @@ export const groups = sqliteTable('groups', {
 export const groupMembers = sqliteTable('group_members', {
   id: text('id').primaryKey(),
   groupId: text('group_id').notNull().references(() => groups.id),
-  friendId: text('friend_id').references(() => friends.id), // null = "You" (Me)
+  friendId: text('friend_id').references(() => friends.id), // null = "You" (Me) or non-friend member
+  userId: text('user_id'),
+  name: text('name'),
+  avatarUrl: text('avatar_url'),
+  role: text('role').default('member'),
   createdAt: text('created_at').notNull(),
+});
+
+// ─── Group Invites ─────────────────────────────────────────────────────
+export const groupInvites = sqliteTable('group_invites', {
+  id: text('id').primaryKey(),
+  groupId: text('group_id').notNull().references(() => groups.id),
+  code: text('code').notNull().unique(),
+  createdBy: text('created_by').notNull(),
+  createdAt: text('created_at').notNull(),
+  expiresAt: text('expires_at'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
 });
 
 // ─── Group Expenses ────────────────────────────────────────────────────

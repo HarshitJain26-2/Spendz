@@ -17,6 +17,7 @@ import type {
   SplitStatus,
   Group,
   GroupMember,
+  GroupInvite,
   GroupExpense,
   GroupExpenseParticipant,
   GroupSettlement,
@@ -118,7 +119,21 @@ export const repository: DatabaseRepository = {
           id TEXT PRIMARY KEY,
           group_id TEXT NOT NULL REFERENCES groups(id),
           friend_id TEXT REFERENCES friends(id),
+          user_id TEXT,
+          name TEXT,
+          avatar_url TEXT,
+          role TEXT DEFAULT 'member',
           created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS group_invites (
+          id TEXT PRIMARY KEY,
+          group_id TEXT NOT NULL REFERENCES groups(id),
+          code TEXT NOT NULL UNIQUE,
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          expires_at TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS group_expenses (
@@ -163,6 +178,18 @@ export const repository: DatabaseRepository = {
       } catch (_) {}
       try {
         sqliteDb.execSync(`ALTER TABLE split_expenses ADD COLUMN paid_by_friend_id TEXT;`);
+      } catch (_) {}
+      try {
+        sqliteDb.execSync(`ALTER TABLE group_members ADD COLUMN user_id TEXT;`);
+      } catch (_) {}
+      try {
+        sqliteDb.execSync(`ALTER TABLE group_members ADD COLUMN name TEXT;`);
+      } catch (_) {}
+      try {
+        sqliteDb.execSync(`ALTER TABLE group_members ADD COLUMN avatar_url TEXT;`);
+      } catch (_) {}
+      try {
+        sqliteDb.execSync(`ALTER TABLE group_members ADD COLUMN role TEXT DEFAULT 'member';`);
       } catch (_) {}
 
       // Safe cleanup of any orphaned split records whose transaction_id no longer exists
@@ -459,25 +486,47 @@ export const repository: DatabaseRepository = {
     const db = getDb();
     const groupRows = db.select().from(schema.groups).all();
     const memberRows = db.select().from(schema.groupMembers).all();
+    const inviteRows = db.select().from(schema.groupInvites).all();
     const friendRows = db.select().from(schema.friends).all();
     const friendMap = new Map(friendRows.map((f) => [f.id, f]));
 
-    return groupRows.map((g) => ({
-      id: g.id,
-      name: g.name,
-      icon: g.icon,
-      createdAt: g.createdAt,
-      updatedAt: g.updatedAt,
-      members: memberRows
-        .filter((m) => m.groupId === g.id)
-        .map((m) => ({
-          id: m.id,
-          groupId: m.groupId,
-          friendId: m.friendId,
-          createdAt: m.createdAt,
-          friend: m.friendId ? friendMap.get(m.friendId) || null : null,
-        })),
-    }));
+    return groupRows.map((g) => {
+      const activeInvite = inviteRows.find(
+        (i) => i.groupId === g.id && i.isActive && (!i.expiresAt || new Date(i.expiresAt).getTime() > Date.now())
+      ) || null;
+
+      return {
+        id: g.id,
+        name: g.name,
+        icon: g.icon,
+        createdAt: g.createdAt,
+        updatedAt: g.updatedAt,
+        activeInvite: activeInvite
+          ? {
+              id: activeInvite.id,
+              groupId: activeInvite.groupId,
+              code: activeInvite.code,
+              createdBy: activeInvite.createdBy,
+              createdAt: activeInvite.createdAt,
+              expiresAt: activeInvite.expiresAt,
+              isActive: Boolean(activeInvite.isActive),
+            }
+          : null,
+        members: memberRows
+          .filter((m) => m.groupId === g.id)
+          .map((m) => ({
+            id: m.id,
+            groupId: m.groupId,
+            friendId: m.friendId,
+            userId: m.userId,
+            name: m.name,
+            avatarUrl: m.avatarUrl,
+            role: (m.role as any) || 'member',
+            createdAt: m.createdAt,
+            friend: m.friendId ? friendMap.get(m.friendId) || null : null,
+          })),
+      };
+    });
   },
 
   addGroup(group: Group, members: GroupMember[]) {
@@ -495,6 +544,10 @@ export const repository: DatabaseRepository = {
         id: m.id,
         groupId: m.groupId,
         friendId: m.friendId,
+        userId: m.userId || null,
+        name: m.name || null,
+        avatarUrl: m.avatarUrl || null,
+        role: m.role || 'member',
         createdAt: m.createdAt,
       }).run();
     }
@@ -529,6 +582,9 @@ export const repository: DatabaseRepository = {
     // Delete settlements
     db.delete(schema.groupSettlements).where(eq(schema.groupSettlements.groupId, id)).run();
 
+    // Delete invites
+    db.delete(schema.groupInvites).where(eq(schema.groupInvites.groupId, id)).run();
+
     // Delete members
     db.delete(schema.groupMembers).where(eq(schema.groupMembers.groupId, id)).run();
 
@@ -542,6 +598,10 @@ export const repository: DatabaseRepository = {
       id: member.id,
       groupId: member.groupId,
       friendId: member.friendId,
+      userId: member.userId || null,
+      name: member.name || null,
+      avatarUrl: member.avatarUrl || null,
+      role: member.role || 'member',
       createdAt: member.createdAt,
     }).run();
   },
@@ -560,6 +620,151 @@ export const repository: DatabaseRepository = {
         .where(eq(schema.groupMembers.id, target.id))
         .run();
     }
+  },
+
+  getGroupMembers(groupId: string): GroupMember[] {
+    const db = getDb();
+    const memberRows = db
+      .select()
+      .from(schema.groupMembers)
+      .where(eq(schema.groupMembers.groupId, groupId))
+      .all();
+    const friendRows = db.select().from(schema.friends).all();
+    const friendMap = new Map(friendRows.map((f) => [f.id, f]));
+
+    return memberRows.map((m) => ({
+      id: m.id,
+      groupId: m.groupId,
+      friendId: m.friendId,
+      userId: m.userId,
+      name: m.name,
+      avatarUrl: m.avatarUrl,
+      role: (m.role as any) || 'member',
+      createdAt: m.createdAt,
+      friend: m.friendId ? friendMap.get(m.friendId) || null : null,
+    }));
+  },
+
+  joinGroup(groupId: string, member: GroupMember): { success: boolean; message?: string } {
+    const db = getDb();
+    const grp = db.select().from(schema.groups).where(eq(schema.groups.id, groupId)).get();
+    if (!grp) {
+      return { success: false, message: 'This group is no longer available.' };
+    }
+
+    const existingMembers = db
+      .select()
+      .from(schema.groupMembers)
+      .where(eq(schema.groupMembers.groupId, groupId))
+      .all();
+
+    const isAlreadyMember = existingMembers.some(
+      (m) =>
+        (member.userId && m.userId === member.userId) ||
+        (member.friendId && m.friendId === member.friendId) ||
+        (member.name && m.name && m.name.toLowerCase() === member.name.toLowerCase())
+    );
+
+    if (isAlreadyMember) {
+      return { success: false, message: "You're already a member of this group." };
+    }
+
+    this.addGroupMember(member);
+    return { success: true };
+  },
+
+  // ─── Group Invites ─────────────────────────────────────────────────────
+  createGroupInvite(invite: GroupInvite) {
+    const db = getDb();
+    // Invalidate existing active invites for this group to maintain 1 active invite per group
+    db.update(schema.groupInvites)
+      .set({ isActive: false })
+      .where(eq(schema.groupInvites.groupId, invite.groupId))
+      .run();
+
+    db.insert(schema.groupInvites).values({
+      id: invite.id,
+      groupId: invite.groupId,
+      code: invite.code.trim().toUpperCase(),
+      createdBy: invite.createdBy,
+      createdAt: invite.createdAt,
+      expiresAt: invite.expiresAt,
+      isActive: invite.isActive,
+    }).run();
+  },
+
+  getInviteByCode(code: string): GroupInvite | null {
+    const db = getDb();
+    const upperCode = code.trim().toUpperCase();
+    const row = db
+      .select()
+      .from(schema.groupInvites)
+      .where(eq(schema.groupInvites.code, upperCode))
+      .get();
+
+    if (!row) return null;
+    return {
+      id: row.id,
+      groupId: row.groupId,
+      code: row.code,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+      isActive: Boolean(row.isActive),
+    };
+  },
+
+  getInvitesByGroupId(groupId: string): GroupInvite[] {
+    const db = getDb();
+    const rows = db
+      .select()
+      .from(schema.groupInvites)
+      .where(eq(schema.groupInvites.groupId, groupId))
+      .all();
+
+    return rows.map((r) => ({
+      id: r.id,
+      groupId: r.groupId,
+      code: r.code,
+      createdBy: r.createdBy,
+      createdAt: r.createdAt,
+      expiresAt: r.expiresAt,
+      isActive: Boolean(r.isActive),
+    }));
+  },
+
+  getActiveInviteByGroupId(groupId: string): GroupInvite | null {
+    const db = getDb();
+    const rows = db
+      .select()
+      .from(schema.groupInvites)
+      .where(and(eq(schema.groupInvites.groupId, groupId), eq(schema.groupInvites.isActive, true)))
+      .all();
+
+    const active = rows.find((r) => {
+      if (!r.isActive) return false;
+      if (r.expiresAt && new Date(r.expiresAt).getTime() < Date.now()) return false;
+      return true;
+    });
+
+    if (!active) return null;
+    return {
+      id: active.id,
+      groupId: active.groupId,
+      code: active.code,
+      createdBy: active.createdBy,
+      createdAt: active.createdAt,
+      expiresAt: active.expiresAt,
+      isActive: Boolean(active.isActive),
+    };
+  },
+
+  revokeGroupInvite(inviteId: string) {
+    const db = getDb();
+    db.update(schema.groupInvites)
+      .set({ isActive: false })
+      .where(eq(schema.groupInvites.id, inviteId))
+      .run();
   },
 
   // ─── Group Expenses ──────────────────────────────────────────────────

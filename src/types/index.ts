@@ -95,15 +95,30 @@ export interface Group {
   updatedAt: string;
   // Joined
   members?: GroupMember[];
+  activeInvite?: GroupInvite | null;
 }
 
 export interface GroupMember {
   id: string;
   groupId: string;
-  friendId: string | null; // null = "You" (Me)
+  friendId: string | null; // null = "You" (Me) or non-friend member
+  userId?: string | null; // app user ID of the member
+  name?: string | null; // display name of member
+  avatarUrl?: string | null;
+  role?: 'owner' | 'admin' | 'member';
   createdAt: string;
   // Joined
   friend?: Friend | null;
+}
+
+export interface GroupInvite {
+  id: string;
+  groupId: string;
+  code: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string | null;
+  isActive: boolean;
 }
 
 export interface GroupExpense {
