@@ -226,8 +226,6 @@ export default function AddOrEditGroupExpenseScreen() {
         });
       }
 
-      useGroupStore.getState().loadGroups();
-
       if (router.canGoBack()) {
         router.back();
       } else {
@@ -251,7 +249,6 @@ export default function AddOrEditGroupExpenseScreen() {
           style: 'destructive',
           onPress: () => {
             deleteGroupExpense(expenseId);
-            useGroupStore.getState().loadGroups();
             if (router.canGoBack()) {
               router.back();
             } else {

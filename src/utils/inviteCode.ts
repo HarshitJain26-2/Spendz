@@ -58,51 +58,77 @@ export function createInvitePayload(code: string): string {
  * Safely handles:
  * - Direct invite codes: "GT-7K4P9X", "GP-4M8P2A"
  * - Deep links: "spendz://group-invite/GT-7K4P9X"
- * - Deep links with query params: "spendz://groups/join?code=GT-7K4P9X"
+ * - Deep links with query params: "spendz://groups/join?code=GT-7K4P9X", "spendz://group-invite?code=GT-7K4P9X"
  * - Web URLs: "https://spendz.app/groups/join?code=GT-7K4P9X"
  *
  * Returns the normalized uppercase invite code if valid, or null if invalid.
  */
 export function parseInviteCodeFromUrlOrInput(input: string): string | null {
+  const result = parseGroupInvitePayload(input);
+  return result ? result.code : null;
+}
+
+/**
+ * Standardized parser for Spendz Group Invite QR payloads and codes.
+ * Returns { code: string } if valid, or null if invalid or unrelated.
+ */
+export function parseGroupInvitePayload(input: string): { code: string } | null {
   if (!input || typeof input !== 'string') return null;
-  const trimmed = input.trim();
+  let trimmed = input.trim();
+
+  try {
+    trimmed = decodeURIComponent(trimmed).trim();
+  } catch {
+    // If decoding fails, keep raw trimmed
+  }
 
   // Pattern for valid invite codes: 2-4 uppercase alphanumeric prefix, hyphen, 4-8 uppercase chars
   const codeRegex = /^[A-Z0-9]{2,4}-[A-Z0-9]{4,8}$/i;
 
-  // 1. Direct code input
+  // 1. Direct code input (e.g. "GT-7K4P9X")
   if (codeRegex.test(trimmed)) {
-    return trimmed.toUpperCase();
+    return { code: trimmed.toUpperCase() };
   }
 
-  // 2. Direct deep link: spendz://group-invite/<codeToken>
+  // 2. Direct simple QR prefix: SPENDZ_GROUP:<codeToken>
+  if (trimmed.toUpperCase().startsWith('SPENDZ_GROUP:')) {
+    const tokenPart = trimmed.slice('SPENDZ_GROUP:'.length).trim();
+    if (codeRegex.test(tokenPart)) {
+      return { code: tokenPart.toUpperCase() };
+    }
+  }
+
+  // 3. Direct deep link: spendz://group-invite/<codeToken>
   if (trimmed.toLowerCase().startsWith('spendz://group-invite/')) {
     const tokenPart = trimmed.slice('spendz://group-invite/'.length).split(/[?#]/)[0].trim();
     if (codeRegex.test(tokenPart)) {
-      return tokenPart.toUpperCase();
+      return { code: tokenPart.toUpperCase() };
     }
-    return null;
   }
 
   // 3. Query string deep link or web link
-  if (trimmed.includes('spendz://') || trimmed.includes('http://') || trimmed.includes('https://')) {
+  if (
+    trimmed.toLowerCase().startsWith('spendz://') ||
+    trimmed.toLowerCase().startsWith('http://') ||
+    trimmed.toLowerCase().startsWith('https://')
+  ) {
     try {
-      const normalizedUrl = trimmed.startsWith('spendz://')
-        ? trimmed.replace('spendz://', 'https://spendz.app/')
+      const normalizedUrl = trimmed.toLowerCase().startsWith('spendz://')
+        ? trimmed.replace(/^spendz:\/\//i, 'https://spendz.app/')
         : trimmed;
 
       const urlObj = new URL(normalizedUrl);
       const codeParam = urlObj.searchParams.get('code');
       if (codeParam && codeRegex.test(codeParam.trim())) {
-        return codeParam.trim().toUpperCase();
+        return { code: codeParam.trim().toUpperCase() };
       }
 
-      // Check pathname components only if pathname is specifically /group-invite/<codeToken>
-      if (urlObj.pathname.toLowerCase().startsWith('/group-invite/')) {
+      // Check pathname components (e.g. /group-invite/GT-7K4P9X)
+      if (urlObj.pathname.toLowerCase().includes('/group-invite/')) {
         const pathSegments = urlObj.pathname.split('/').filter(Boolean);
         const lastSegment = pathSegments[pathSegments.length - 1];
         if (lastSegment && codeRegex.test(lastSegment)) {
-          return lastSegment.toUpperCase();
+          return { code: lastSegment.toUpperCase() };
         }
       }
     } catch {
@@ -112,3 +138,4 @@ export function parseInviteCodeFromUrlOrInput(input: string): string | null {
 
   return null;
 }
+

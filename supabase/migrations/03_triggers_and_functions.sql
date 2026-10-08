@@ -7,12 +7,16 @@
 -- 1. Automatic updated_at timestamp trigger function
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
 BEGIN
     NEW.updated_at = timezone('utc'::text, now());
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- Attach to tables with updated_at
 DROP TRIGGER IF EXISTS trigger_profiles_updated_at ON public.profiles;
@@ -40,17 +44,22 @@ CREATE TRIGGER trigger_transactions_updated_at
 --    Automatically sets up Profile, Default Accounts, and Categories on sign-up
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
 DECLARE
     v_user_name TEXT;
     v_cash_id TEXT;
     v_bank_id TEXT;
 BEGIN
-    -- Extract full name or fallback to email prefix
+    -- Fallback name extraction
     v_user_name := COALESCE(
         NEW.raw_user_meta_data->>'full_name',
         NEW.raw_user_meta_data->>'name',
-        split_part(NEW.email, '@', 1)
+        split_part(NEW.email, '@', 1),
+        'User'
     );
 
     -- 1. Create Profile
@@ -70,9 +79,9 @@ BEGIN
     VALUES (NEW.id, 'light', false)
     ON CONFLICT (user_id) DO NOTHING;
 
-    -- 3. Create Default Accounts (Cash & Bank)
-    v_cash_id := 'acc_' || encode(gen_random_bytes(6), 'hex');
-    v_bank_id := 'acc_' || encode(gen_random_bytes(6), 'hex');
+    -- 3. Create Default Accounts (Cash & Bank) using built-in gen_random_uuid
+    v_cash_id := 'acc_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12);
+    v_bank_id := 'acc_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12);
 
     INSERT INTO public.accounts (id, user_id, name, type, balance, icon, color, is_default)
     VALUES 
@@ -83,30 +92,34 @@ BEGIN
     -- 4. Seed Standard Default Categories for this user
     INSERT INTO public.categories (id, user_id, name, icon, color, type, is_default)
     VALUES
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Food & Dining', 'UtensilsCrossed', '#FF6B6B', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Transport', 'Car', '#4ECDC4', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Shopping', 'ShoppingBag', '#FFE66D', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Bills & Utilities', 'Receipt', '#A78BFA', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Entertainment', 'Gamepad2', '#F472B6', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Education', 'GraduationCap', '#60A5FA', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Health', 'Heart', '#34D399', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Travel', 'Plane', '#FB923C', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Gifts', 'Gift', '#E879F9', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Groceries', 'Apple', '#F97316', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Rent', 'Home', '#8B5CF6', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Subscriptions', 'CreditCard', '#06B6D4', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Other', 'MoreHorizontal', '#94A3B8', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Salary', 'Banknote', '#22C55E', 'income', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Freelance', 'Laptop', '#10B981', 'income', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Investment', 'TrendingUp', '#6366F1', 'income', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Refund', 'RotateCcw', '#F59E0B', 'income', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Gift Received', 'Gift', '#EC4899', 'income', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Other Income', 'Plus', '#94A3B8', 'income', true)
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Food & Dining', 'UtensilsCrossed', '#FF6B6B', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Transport', 'Car', '#4ECDC4', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Shopping', 'ShoppingBag', '#FFE66D', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Bills & Utilities', 'Receipt', '#A78BFA', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Entertainment', 'Gamepad2', '#F472B6', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Education', 'GraduationCap', '#60A5FA', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Health', 'Heart', '#34D399', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Travel', 'Plane', '#FB923C', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Gifts', 'Gift', '#E879F9', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Groceries', 'Apple', '#F97316', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Rent', 'Home', '#8B5CF6', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Subscriptions', 'CreditCard', '#06B6D4', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Other', 'MoreHorizontal', '#94A3B8', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Salary', 'Banknote', '#22C55E', 'income', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Freelance', 'Laptop', '#10B981', 'income', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Investment', 'TrendingUp', '#6366F1', 'income', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Refund', 'RotateCcw', '#F59E0B', 'income', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Gift Received', 'Gift', '#EC4899', 'income', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Other Income', 'Plus', '#94A3B8', 'income', true)
     ON CONFLICT (id) DO NOTHING;
 
     RETURN NEW;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE WARNING 'handle_new_user failed: %', SQLERRM;
+        RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- Trigger to execute on user signup
 DROP TRIGGER IF EXISTS trigger_on_auth_user_created ON auth.users;
@@ -121,7 +134,11 @@ CREATE OR REPLACE FUNCTION public.settle_split_participant(
     p_split_expense_id TEXT,
     p_participant_id TEXT
 )
-RETURNS JSONB AS $$
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
 DECLARE
     v_user_id UUID;
     v_all_paid BOOLEAN;
@@ -176,7 +193,7 @@ BEGIN
 
     RETURN v_result;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- ------------------------------------------------------------------------------
 -- 4. Analytical Views for Reports and Dashboard

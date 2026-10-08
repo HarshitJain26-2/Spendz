@@ -8,6 +8,7 @@ import {
   Share,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -51,15 +52,22 @@ export default function GroupInviteScreen() {
   const [invite, setInvite] = useState<GroupInvite | null>(null);
   const [copied, setCopied] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
+  const [isLoadingInvite, setIsLoadingInvite] = useState(true);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
-  // Initialize or fetch the active invite for this group
-  const loadInvite = useCallback(() => {
+  // Initialize or fetch the active invite for this group from Supabase
+  const loadInvite = useCallback(async () => {
     if (!targetGroupId) return;
+    setIsLoadingInvite(true);
+    setInviteError(null);
     try {
-      const inv = getOrCreateInvite(targetGroupId);
+      const inv = await getOrCreateInvite(targetGroupId);
       setInvite(inv);
-    } catch (e) {
+    } catch (e: any) {
       console.warn('Failed to load group invite:', e);
+      setInviteError(e?.message || 'Failed to sync invite code with backend.');
+    } finally {
+      setIsLoadingInvite(false);
     }
   }, [targetGroupId, getOrCreateInvite]);
 
@@ -129,10 +137,18 @@ export default function GroupInviteScreen() {
   };
 
   // Generate a fresh invite if revoked
-  const handleGenerateNewInvite = () => {
+  const handleGenerateNewInvite = async () => {
     if (!targetGroupId) return;
-    const newInv = getOrCreateInvite(targetGroupId);
-    setInvite(newInv);
+    setIsLoadingInvite(true);
+    setInviteError(null);
+    try {
+      const newInv = await getOrCreateInvite(targetGroupId);
+      setInvite(newInv);
+    } catch (e: any) {
+      setInviteError(e?.message || 'Failed to generate new invite.');
+    } finally {
+      setIsLoadingInvite(false);
+    }
   };
 
   if (!group) {
@@ -234,7 +250,51 @@ export default function GroupInviteScreen() {
 
           {/* QR Code Container */}
           <View style={styles.qrSection}>
-            {isRevoked ? (
+            {isLoadingInvite ? (
+              <View style={styles.qrWrapper}>
+                <View
+                  style={[
+                    styles.qrFrame,
+                    {
+                      backgroundColor: colors.surfaceElevated,
+                      borderColor: isDark ? colors.border : '#E5E7EB',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minHeight: 220,
+                    },
+                    shadows.sm,
+                  ]}
+                >
+                  <ActivityIndicator size="large" color={colors.accent} />
+                  <Text style={[styles.qrHint, { color: colors.textSecondary, marginTop: 12 }]}>
+                    Generating secure invite code...
+                  </Text>
+                </View>
+              </View>
+            ) : inviteError && !invite ? (
+              <View
+                style={[
+                  styles.revokedBox,
+                  { backgroundColor: colors.surfaceElevated, borderColor: colors.expense },
+                ]}
+              >
+                <ShieldAlert size={48} color={colors.expense} strokeWidth={1.7} />
+                <Text style={[styles.revokedTitle, { color: colors.textPrimary }]}>
+                  Unable to Load Invite
+                </Text>
+                <Text style={[styles.revokedSubtitle, { color: colors.textSecondary }]}>
+                  {inviteError}
+                </Text>
+                <TouchableOpacity
+                  onPress={loadInvite}
+                  style={[styles.generateNewBtn, { backgroundColor: colors.accent }]}
+                  activeOpacity={0.8}
+                >
+                  <RefreshCw size={16} color="#FFFFFF" strokeWidth={2.2} />
+                  <Text style={styles.generateNewText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : isRevoked ? (
               <View
                 style={[
                   styles.revokedBox,

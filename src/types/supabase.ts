@@ -271,6 +271,90 @@ export interface Database {
           settled_at?: string | null;
         };
       };
+      groups: {
+        Row: {
+          id: string;
+          name: string;
+          icon: string;
+          created_by?: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          name: string;
+          icon?: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          icon?: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      group_members: {
+        Row: {
+          id: string;
+          group_id: string;
+          user_id: string | null;
+          name: string | null;
+          avatar_url: string | null;
+          role: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          group_id: string;
+          user_id?: string | null;
+          name?: string | null;
+          avatar_url?: string | null;
+          role?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          group_id?: string;
+          user_id?: string | null;
+          name?: string | null;
+          avatar_url?: string | null;
+          role?: string | null;
+          created_at?: string;
+        };
+      };
+      group_invites: {
+        Row: {
+          id: string;
+          group_id: string;
+          code: string;
+          created_by: string;
+          created_at: string;
+          expires_at: string | null;
+          is_active: boolean;
+        };
+        Insert: {
+          id: string;
+          group_id: string;
+          code: string;
+          created_by: string;
+          created_at?: string;
+          expires_at?: string | null;
+          is_active?: boolean;
+        };
+        Update: {
+          id?: string;
+          group_id?: string;
+          code?: string;
+          created_by?: string;
+          created_at?: string;
+          expires_at?: string | null;
+          is_active?: boolean;
+        };
+      };
     };
     Views: {
       view_user_monthly_summary: {

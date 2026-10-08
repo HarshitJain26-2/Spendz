@@ -159,11 +159,14 @@ export interface GroupSettlement {
 }
 
 export interface GroupMemberBalance {
+  memberId?: string;
+  userId?: string | null;
   friendId: string | null; // null = "You" (Me)
   friend?: Friend | null;
   name: string;
   balance: number; // positive = net owed, negative = net owes
   balanceWithMe: number; // positive = owes Me, negative = Me owes them
+  isMe?: boolean;
 }
 
 

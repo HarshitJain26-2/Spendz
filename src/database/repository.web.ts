@@ -452,11 +452,27 @@ export const repository: DatabaseRepository = {
       }));
   },
 
-  joinGroup(groupId: string, member: GroupMember): { success: boolean; message?: string } {
+  joinGroup(groupId: string, member: GroupMember, groupToInsert?: Group): { success: boolean; message?: string } {
     const groups = getStorage<Group[]>(STORAGE_KEYS.GROUPS, []);
-    const grp = groups.find((g) => g.id === groupId);
+    let grp = groups.find((g) => g.id === groupId);
     if (!grp) {
-      return { success: false, message: 'This group is no longer available.' };
+      if (groupToInsert) {
+        groups.unshift(groupToInsert);
+        setStorage(STORAGE_KEYS.GROUPS, groups);
+        grp = groupToInsert;
+
+        if (groupToInsert.members && groupToInsert.members.length > 0) {
+          const allMembers = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
+          for (const m of groupToInsert.members) {
+            if (!allMembers.some((existing) => existing.id === m.id)) {
+              allMembers.push(m);
+            }
+          }
+          setStorage(STORAGE_KEYS.GROUP_MEMBERS, allMembers);
+        }
+      } else {
+        return { success: false, message: 'This group is no longer available.' };
+      }
     }
 
     const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
@@ -464,9 +480,8 @@ export const repository: DatabaseRepository = {
 
     const isAlreadyMember = groupMembers.some(
       (m) =>
-        (member.userId && m.userId === member.userId) ||
-        (member.friendId && m.friendId === member.friendId) ||
-        (member.name && m.name && m.name.toLowerCase() === member.name.toLowerCase())
+        Boolean(member.userId && m.userId && m.userId === member.userId) ||
+        Boolean(member.id && m.id === member.id)
     );
 
     if (isAlreadyMember) {
@@ -475,6 +490,14 @@ export const repository: DatabaseRepository = {
 
     members.push(member);
     setStorage(STORAGE_KEYS.GROUP_MEMBERS, members);
+
+    const verified = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []).some(
+      (m) => m.id === member.id
+    );
+    if (!verified) {
+      return { success: false, message: 'Database failed to verify membership.' };
+    }
+
     return { success: true };
   },
 

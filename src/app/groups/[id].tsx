@@ -11,7 +11,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter, useFocusEffect, useNavigation } from 'expo-router';
+import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import {
   ArrowLeft,
   Settings,
@@ -28,7 +28,12 @@ import {
   UserPlus,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
-import { useGroupStore } from '@/store/groupStore';
+import {
+  useGroupStore,
+  calculateGroupSummary,
+  calculateGroupMemberBalances,
+} from '@/store/groupStore';
+import { useFriendStore } from '@/store/friendStore';
 import { useAppStore } from '@/store/appStore';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -47,40 +52,30 @@ export default function GroupDetailScreen() {
 
   const userProfile = useAppStore((s) => s.userProfile);
 
-  // Group store selectors
+  // Group store selectors (stable state slices)
   const groups = useGroupStore((s) => s.groups);
   const groupExpenses = useGroupStore((s) => s.groupExpenses);
   const groupSettlements = useGroupStore((s) => s.groupSettlements);
+  const friends = useFriendStore((s) => s.friends);
   const deleteGroupExpense = useGroupStore((s) => s.deleteGroupExpense);
   const addGroupSettlement = useGroupStore((s) => s.addGroupSettlement);
   const deleteGroupSettlement = useGroupStore((s) => s.deleteGroupSettlement);
-  const getGroupMemberBalances = useGroupStore((s) => s.getGroupMemberBalances);
-  const getGroupBalanceForMe = useGroupStore((s) => s.getGroupBalanceForMe);
-  const getGroupSummary = useGroupStore((s) => s.getGroupSummary);
 
   const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
 
-  const reloadData = useCallback(() => {
-    useGroupStore.getState().loadGroups();
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      reloadData();
-    }, [reloadData])
-  );
-
+  // Initial hydration if store is empty on direct route entry
   useEffect(() => {
-    const unsub = navigation.addListener('focus', reloadData);
-    return unsub;
-  }, [navigation, reloadData]);
+    if (useGroupStore.getState().groups.length === 0) {
+      useGroupStore.getState().loadGroups();
+    }
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    reloadData();
+    useGroupStore.getState().loadGroups();
     setRefreshing(false);
-  }, [reloadData]);
+  }, []);
 
   const group = useMemo(() => groups.find((g) => g.id === id), [groups, id]);
 
@@ -95,7 +90,7 @@ export default function GroupDetailScreen() {
   const [settleReceiverId, setSettleReceiverId] = useState<string | null>(null);
   const [settleAmount, setSettleAmount] = useState('');
 
-  // Expenses & Settlements for this group
+  // Expenses & Settlements for this group (Single Source of Truth)
   const expenses = useMemo(
     () =>
       groupExpenses
@@ -125,30 +120,28 @@ export default function GroupDetailScreen() {
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [expenses, settlements]);
 
-  // Balances
-  const memberBalances = useMemo(() => (id ? getGroupMemberBalances(id) : []), [
-    id,
-    groupExpenses,
-    groupSettlements,
-    groups,
-    getGroupMemberBalances,
-  ]);
+  // Derived Group Summary (Live Single Source of Truth)
+  const groupSummary = useMemo(
+    () => calculateGroupSummary(expenses, settlements),
+    [expenses, settlements]
+  );
 
-  const netBalanceForMe = useMemo(() => (id ? getGroupBalanceForMe(id) : 0), [
-    id,
-    groupExpenses,
-    groupSettlements,
-    groups,
-    getGroupBalanceForMe,
-  ]);
+  const netBalanceForMe = groupSummary.netBalance;
 
-  const groupSummary = useMemo(() => (id ? getGroupSummary(id) : null), [
-    id,
-    groupExpenses,
-    groupSettlements,
-    groups,
-    getGroupSummary,
-  ]);
+  // Derived Member Balances (Live Single Source of Truth)
+  const memberBalances = useMemo(
+    () =>
+      group
+        ? calculateGroupMemberBalances(
+            group,
+            expenses,
+            settlements,
+            friends,
+            userProfile.id
+          )
+        : [],
+    [group, expenses, settlements, friends, userProfile.id]
+  );
 
   // Aggregate what you owe / are owed by members in this group
   const { groupMemberYouOwe, groupMemberOwedToYou, groupMemberBreakdown } = useMemo(() => {
@@ -157,11 +150,11 @@ export default function GroupDetailScreen() {
     const breakdown: GroupMemberBalanceItem[] = [];
 
     for (const mb of memberBalances) {
-      if (mb.friendId === null) continue; // skip current user
+      if (mb.isMe) continue; // skip current user ("You")
       const bal = mb.balanceWithMe;
       if (bal !== 0) {
         breakdown.push({
-          id: mb.friendId,
+          id: mb.memberId || mb.friendId || mb.userId || mb.name,
           name: mb.name,
           friendId: mb.friendId,
           balance: bal,
@@ -761,13 +754,13 @@ export default function GroupDetailScreen() {
               ]}
             >
               {memberBalances.map((mb, idx) => {
-                const isMe = mb.friendId === null;
+                const isMe = Boolean(mb.isMe);
                 const isLast = idx === memberBalances.length - 1;
                 const balanceWithMe = mb.balanceWithMe;
 
                 return (
                   <View
-                    key={mb.friendId || 'me'}
+                    key={mb.memberId || mb.userId || mb.friendId || `mem-${idx}`}
                     style={[
                       styles.memberRow,
                       {

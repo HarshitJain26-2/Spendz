@@ -191,6 +191,9 @@ export const repository: DatabaseRepository = {
       try {
         sqliteDb.execSync(`ALTER TABLE group_members ADD COLUMN role TEXT DEFAULT 'member';`);
       } catch (_) {}
+      try {
+        sqliteDb.execSync(`CREATE UNIQUE INDEX IF NOT EXISTS idx_group_members_group_user ON group_members(group_id, user_id) WHERE user_id IS NOT NULL;`);
+      } catch (_) {}
 
       // Safe cleanup of any orphaned split records whose transaction_id no longer exists
       try {
@@ -645,11 +648,41 @@ export const repository: DatabaseRepository = {
     }));
   },
 
-  joinGroup(groupId: string, member: GroupMember): { success: boolean; message?: string } {
+  joinGroup(groupId: string, member: GroupMember, groupToInsert?: Group): { success: boolean; message?: string } {
     const db = getDb();
-    const grp = db.select().from(schema.groups).where(eq(schema.groups.id, groupId)).get();
+    let grp = db.select().from(schema.groups).where(eq(schema.groups.id, groupId)).get();
     if (!grp) {
-      return { success: false, message: 'This group is no longer available.' };
+      if (groupToInsert) {
+        db.insert(schema.groups).values({
+          id: groupToInsert.id,
+          name: groupToInsert.name,
+          icon: groupToInsert.icon || '🏖',
+          createdAt: groupToInsert.createdAt,
+          updatedAt: groupToInsert.updatedAt,
+        }).run();
+        grp = db.select().from(schema.groups).where(eq(schema.groups.id, groupId)).get();
+
+        if (groupToInsert.members && groupToInsert.members.length > 0) {
+          for (const m of groupToInsert.members) {
+            try {
+              db.insert(schema.groupMembers).values({
+                id: m.id,
+                groupId: m.groupId,
+                friendId: m.friendId || null,
+                userId: m.userId || null,
+                name: m.name || null,
+                avatarUrl: m.avatarUrl || null,
+                role: m.role || 'member',
+                createdAt: m.createdAt,
+              }).run();
+            } catch (e) {
+              // Ignore if already inserted
+            }
+          }
+        }
+      } else {
+        return { success: false, message: 'This group is no longer available.' };
+      }
     }
 
     const existingMembers = db
@@ -660,16 +693,35 @@ export const repository: DatabaseRepository = {
 
     const isAlreadyMember = existingMembers.some(
       (m) =>
-        (member.userId && m.userId === member.userId) ||
-        (member.friendId && m.friendId === member.friendId) ||
-        (member.name && m.name && m.name.toLowerCase() === member.name.toLowerCase())
+        Boolean(member.userId && m.userId && m.userId === member.userId) ||
+        Boolean(member.id && m.id === member.id)
     );
 
     if (isAlreadyMember) {
       return { success: false, message: "You're already a member of this group." };
     }
 
-    this.addGroupMember(member);
+    db.insert(schema.groupMembers).values({
+      id: member.id,
+      groupId: member.groupId,
+      friendId: member.friendId,
+      userId: member.userId || null,
+      name: member.name || null,
+      avatarUrl: member.avatarUrl || null,
+      role: member.role || 'member',
+      createdAt: member.createdAt,
+    }).run();
+
+    const verified = db
+      .select()
+      .from(schema.groupMembers)
+      .where(eq(schema.groupMembers.id, member.id))
+      .get();
+
+    if (!verified) {
+      return { success: false, message: 'Database failed to verify membership.' };
+    }
+
     return { success: true };
   },
 

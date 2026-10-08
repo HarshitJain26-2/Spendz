@@ -69,12 +69,20 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose })
     }
   };
 
+  useEffect(() => {
+    setHasScanned(false);
+  }, []);
+
   const handleBarcodeScanned = (event: any) => {
     if (hasScanned) return;
     const data = event?.data || event?.raw || '';
     if (data) {
       setHasScanned(true);
       onScan(data);
+      // Auto-recover after 2 seconds so invalid scans do not freeze the viewfinder
+      setTimeout(() => {
+        setHasScanned(false);
+      }, 2000);
     }
   };
 

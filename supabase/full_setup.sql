@@ -229,12 +229,16 @@ CREATE POLICY "Users can delete their own split participants" ON public.split_pa
 
 -- Updated At handler
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
 BEGIN
     NEW.updated_at = timezone('utc'::text, now());
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS trigger_profiles_updated_at ON public.profiles;
 CREATE TRIGGER trigger_profiles_updated_at BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
@@ -250,21 +254,34 @@ CREATE TRIGGER trigger_transactions_updated_at BEFORE UPDATE ON public.transacti
 
 -- User Signup Handler: Creates Profile, Settings, Accounts, & Categories
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
 DECLARE
     v_user_name TEXT;
     v_cash_id TEXT;
     v_bank_id TEXT;
 BEGIN
+    -- Fallback name extraction
     v_user_name := COALESCE(
         NEW.raw_user_meta_data->>'full_name',
         NEW.raw_user_meta_data->>'name',
-        split_part(NEW.email, '@', 1)
+        split_part(NEW.email, '@', 1),
+        'User'
     );
 
     -- 1. Profile
     INSERT INTO public.profiles (id, email, name, full_name, avatar_url, currency)
-    VALUES (NEW.id, NEW.email, v_user_name, v_user_name, NEW.raw_user_meta_data->>'avatar_url', '₹')
+    VALUES (
+        NEW.id,
+        NEW.email,
+        v_user_name,
+        v_user_name,
+        NEW.raw_user_meta_data->>'avatar_url',
+        '₹'
+    )
     ON CONFLICT (id) DO NOTHING;
 
     -- 2. User Settings
@@ -272,9 +289,9 @@ BEGIN
     VALUES (NEW.id, 'light', false)
     ON CONFLICT (user_id) DO NOTHING;
 
-    -- 3. Default Accounts
-    v_cash_id := 'acc_' || encode(gen_random_bytes(6), 'hex');
-    v_bank_id := 'acc_' || encode(gen_random_bytes(6), 'hex');
+    -- 3. Default Accounts (Using built-in gen_random_uuid)
+    v_cash_id := 'acc_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12);
+    v_bank_id := 'acc_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12);
 
     INSERT INTO public.accounts (id, user_id, name, type, balance, icon, color, is_default)
     VALUES 
@@ -285,30 +302,34 @@ BEGIN
     -- 4. Default Categories
     INSERT INTO public.categories (id, user_id, name, icon, color, type, is_default)
     VALUES
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Food & Dining', 'UtensilsCrossed', '#FF6B6B', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Transport', 'Car', '#4ECDC4', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Shopping', 'ShoppingBag', '#FFE66D', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Bills & Utilities', 'Receipt', '#A78BFA', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Entertainment', 'Gamepad2', '#F472B6', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Education', 'GraduationCap', '#60A5FA', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Health', 'Heart', '#34D399', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Travel', 'Plane', '#FB923C', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Gifts', 'Gift', '#E879F9', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Groceries', 'Apple', '#F97316', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Rent', 'Home', '#8B5CF6', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Subscriptions', 'CreditCard', '#06B6D4', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Other', 'MoreHorizontal', '#94A3B8', 'expense', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Salary', 'Banknote', '#22C55E', 'income', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Freelance', 'Laptop', '#10B981', 'income', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Investment', 'TrendingUp', '#6366F1', 'income', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Refund', 'RotateCcw', '#F59E0B', 'income', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Gift Received', 'Gift', '#EC4899', 'income', true),
-        ('cat_' || encode(gen_random_bytes(6), 'hex'), NEW.id, 'Other Income', 'Plus', '#94A3B8', 'income', true)
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Food & Dining', 'UtensilsCrossed', '#FF6B6B', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Transport', 'Car', '#4ECDC4', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Shopping', 'ShoppingBag', '#FFE66D', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Bills & Utilities', 'Receipt', '#A78BFA', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Entertainment', 'Gamepad2', '#F472B6', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Education', 'GraduationCap', '#60A5FA', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Health', 'Heart', '#34D399', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Travel', 'Plane', '#FB923C', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Gifts', 'Gift', '#E879F9', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Groceries', 'Apple', '#F97316', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Rent', 'Home', '#8B5CF6', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Subscriptions', 'CreditCard', '#06B6D4', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Other', 'MoreHorizontal', '#94A3B8', 'expense', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Salary', 'Banknote', '#22C55E', 'income', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Freelance', 'Laptop', '#10B981', 'income', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Investment', 'TrendingUp', '#6366F1', 'income', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Refund', 'RotateCcw', '#F59E0B', 'income', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Gift Received', 'Gift', '#EC4899', 'income', true),
+        ('cat_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12), NEW.id, 'Other Income', 'Plus', '#94A3B8', 'income', true)
     ON CONFLICT (id) DO NOTHING;
 
     RETURN NEW;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE WARNING 'handle_new_user failed: %', SQLERRM;
+        RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS trigger_on_auth_user_created ON auth.users;
 CREATE TRIGGER trigger_on_auth_user_created
@@ -320,7 +341,11 @@ CREATE OR REPLACE FUNCTION public.settle_split_participant(
     p_split_expense_id TEXT,
     p_participant_id TEXT
 )
-RETURNS JSONB AS $$
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
 DECLARE
     v_user_id UUID;
     v_all_paid BOOLEAN;
@@ -369,10 +394,42 @@ BEGIN
 
     RETURN v_result;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- ------------------------------------------------------------------------------
--- 5. Seed Global Categories
+-- 5. Analytical Views for Reports and Dashboard
+-- ------------------------------------------------------------------------------
+
+-- Monthly Income, Expense, and Savings View
+CREATE OR REPLACE VIEW public.view_user_monthly_summary AS
+SELECT
+    user_id,
+    to_char(date, 'YYYY-MM') AS month_key,
+    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS total_income,
+    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS total_expense,
+    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) AS net_saved,
+    COUNT(id) AS transaction_count
+FROM public.transactions
+GROUP BY user_id, to_char(date, 'YYYY-MM');
+
+-- Category Breakdown View
+CREATE OR REPLACE VIEW public.view_user_category_spending AS
+SELECT
+    t.user_id,
+    to_char(t.date, 'YYYY-MM') AS month_key,
+    c.id AS category_id,
+    c.name AS category_name,
+    c.icon AS category_icon,
+    c.color AS category_color,
+    SUM(t.amount) AS total_amount,
+    COUNT(t.id) AS transaction_count
+FROM public.transactions t
+JOIN public.categories c ON t.category_id = c.id
+WHERE t.type = 'expense'
+GROUP BY t.user_id, to_char(t.date, 'YYYY-MM'), c.id, c.name, c.icon, c.color;
+
+-- ------------------------------------------------------------------------------
+-- 6. Seed Global Categories
 -- ------------------------------------------------------------------------------
 INSERT INTO public.categories (id, user_id, name, icon, color, type, is_default)
 VALUES
@@ -401,3 +458,231 @@ ON CONFLICT (id) DO UPDATE SET
     color = EXCLUDED.color,
     type = EXCLUDED.type,
     is_default = EXCLUDED.is_default;
+
+-- ------------------------------------------------------------------------------
+-- 7. Groups, Members, and Invites (with RLS)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.groups (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    icon TEXT NOT NULL DEFAULT '🏖',
+    created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE TABLE IF NOT EXISTS public.group_members (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL REFERENCES public.groups(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT,
+    avatar_url TEXT,
+    role TEXT DEFAULT 'member',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    UNIQUE(group_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.group_invites (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL REFERENCES public.groups(id) ON DELETE CASCADE,
+    code TEXT NOT NULL UNIQUE,
+    created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    expires_at TIMESTAMPTZ,
+    is_active BOOLEAN NOT NULL DEFAULT true
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_members_group_id ON public.group_members(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_members_user_id ON public.group_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_group_invites_code ON public.group_invites(code);
+CREATE INDEX IF NOT EXISTS idx_group_invites_group_id ON public.group_invites(group_id);
+
+ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.group_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.group_invites ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Anyone authenticated can view active invites" ON public.group_invites;
+CREATE POLICY "Anyone authenticated can view active invites"
+ON public.group_invites FOR SELECT
+TO authenticated
+USING (is_active = true AND (expires_at IS NULL OR expires_at > now()));
+
+-- ------------------------------------------------------------------------------
+-- Helper Functions (SECURITY DEFINER to avoid RLS recursion)
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.is_group_member(check_group_id TEXT, check_user_id UUID DEFAULT auth.uid())
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.group_members
+        WHERE group_id = check_group_id
+        AND user_id = check_user_id
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_group_admin(check_group_id TEXT, check_user_id UUID DEFAULT auth.uid())
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.group_members
+        WHERE group_id = check_group_id
+        AND user_id = check_user_id
+        AND role IN ('admin', 'owner')
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION public.group_has_members(check_group_id TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.group_members
+        WHERE group_id = check_group_id
+    );
+$$;
+
+GRANT EXECUTE ON FUNCTION public.is_group_member(TEXT, UUID) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.is_group_admin(TEXT, UUID) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.group_has_members(TEXT) TO anon, authenticated, service_role;
+
+DROP POLICY IF EXISTS "Group members can view all invites" ON public.group_invites;
+CREATE POLICY "Group members can view all invites"
+ON public.group_invites FOR SELECT
+TO authenticated
+USING (
+    public.is_group_member(group_invites.group_id, auth.uid())
+);
+
+DROP POLICY IF EXISTS "Group members can create invites" ON public.group_invites;
+CREATE POLICY "Group members can create invites"
+ON public.group_invites FOR INSERT
+TO authenticated
+WITH CHECK (created_by = auth.uid());
+
+DROP POLICY IF EXISTS "Group members can update invites" ON public.group_invites;
+CREATE POLICY "Group members can update invites"
+ON public.group_invites FOR UPDATE
+TO authenticated
+USING (
+    public.is_group_member(group_invites.group_id, auth.uid())
+);
+
+DROP POLICY IF EXISTS "Users can view groups they belong to or preview via active invite" ON public.groups;
+DROP POLICY IF EXISTS "Users can view groups they belong to, created, or preview via active invite" ON public.groups;
+CREATE POLICY "Users can view groups they belong to, created, or preview via active invite"
+ON public.groups FOR SELECT
+TO authenticated
+USING (
+    created_by = auth.uid()
+    OR
+    public.is_group_member(groups.id, auth.uid())
+    OR
+    EXISTS (
+        SELECT 1 FROM public.group_invites
+        WHERE group_invites.group_id = groups.id
+        AND group_invites.is_active = true
+        AND (group_invites.expires_at IS NULL OR group_invites.expires_at > now())
+    )
+);
+
+DROP POLICY IF EXISTS "Authenticated users can create groups" ON public.groups;
+DROP POLICY IF EXISTS "Authenticated users can create their own groups" ON public.groups;
+CREATE POLICY "Authenticated users can create their own groups"
+ON public.groups FOR INSERT
+TO authenticated
+WITH CHECK (
+    auth.uid() = created_by
+);
+
+DROP POLICY IF EXISTS "Group members can update group details" ON public.groups;
+DROP POLICY IF EXISTS "Group owners or members can update group details" ON public.groups;
+CREATE POLICY "Group owners or members can update group details"
+ON public.groups FOR UPDATE
+TO authenticated
+USING (
+    created_by = auth.uid()
+    OR
+    public.is_group_member(groups.id, auth.uid())
+)
+WITH CHECK (
+    created_by = auth.uid()
+    OR
+    public.is_group_member(groups.id, auth.uid())
+);
+
+DROP POLICY IF EXISTS "Group owners can delete groups" ON public.groups;
+CREATE POLICY "Group owners can delete groups"
+ON public.groups FOR DELETE
+TO authenticated
+USING (
+    created_by = auth.uid()
+);
+
+DROP POLICY IF EXISTS "Users can view group members of their groups or active invite preview" ON public.group_members;
+CREATE POLICY "Users can view group members of their groups or active invite preview"
+ON public.group_members FOR SELECT
+TO authenticated
+USING (
+    user_id = auth.uid()
+    OR
+    public.is_group_member(group_id, auth.uid())
+    OR
+    EXISTS (
+        SELECT 1 FROM public.group_invites gi
+        WHERE gi.group_id = group_members.group_id
+        AND gi.is_active = true
+        AND (gi.expires_at IS NULL OR gi.expires_at > now())
+    )
+);
+
+DROP POLICY IF EXISTS "Users can insert their own membership" ON public.group_members;
+CREATE POLICY "Users can insert their own membership"
+ON public.group_members FOR INSERT
+TO authenticated
+WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can update their own membership or admins update" ON public.group_members;
+CREATE POLICY "Users can update their own membership or admins update"
+ON public.group_members FOR UPDATE
+TO authenticated
+USING (
+    user_id = auth.uid()
+    OR
+    public.is_group_admin(group_id, auth.uid())
+)
+WITH CHECK (
+    user_id = auth.uid()
+    OR
+    public.is_group_admin(group_id, auth.uid())
+);
+
+DROP POLICY IF EXISTS "Users can leave group or admins remove" ON public.group_members;
+CREATE POLICY "Users can leave group or admins remove"
+ON public.group_members FOR DELETE
+TO authenticated
+USING (
+    user_id = auth.uid()
+    OR
+    public.is_group_admin(group_id, auth.uid())
+);
+
+-- ------------------------------------------------------------------------------
+-- 8. Grant Permissions to standard Supabase roles
+-- ------------------------------------------------------------------------------
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+
+

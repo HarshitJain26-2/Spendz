@@ -70,7 +70,7 @@ export interface DatabaseRepository {
   addGroupMember(member: GroupMember): void;
   removeGroupMember(groupId: string, friendId: string | null): void;
   getGroupMembers(groupId: string): GroupMember[];
-  joinGroup(groupId: string, member: GroupMember): { success: boolean; message?: string };
+  joinGroup(groupId: string, member: GroupMember, groupToInsert?: Group): { success: boolean; message?: string };
 
   // Group Invites
   createGroupInvite(invite: GroupInvite): void;

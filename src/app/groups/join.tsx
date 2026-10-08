@@ -28,10 +28,13 @@ import {
 import { useTheme } from '@/hooks/useTheme';
 import { useGroupStore, type InviteValidationResult } from '@/store/groupStore';
 import { useAppStore } from '@/store/appStore';
+import { useAuthStore } from '@/store/authStore';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import { parseInviteCodeFromUrlOrInput } from '@/utils/inviteCode';
+import { parseInviteCodeFromUrlOrInput, parseGroupInvitePayload } from '@/utils/inviteCode';
 import { showAlert } from '@/utils/alert';
+import { repository } from '@/database/repository';
+import { SupabaseQueries } from '@/lib/supabaseQueries';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius, shadows } from '@/theme/spacing';
 import type { Group } from '@/types';
@@ -42,8 +45,9 @@ export default function JoinGroupScreen() {
   const { code: paramCode } = useLocalSearchParams<{ code?: string }>();
 
   const userProfile = useAppStore((s) => s.userProfile);
-  const validateInvite = useGroupStore((s) => s.validateInvite);
-  const joinGroupByCode = useGroupStore((s) => s.joinGroupByCode);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const validateGroupInvite = useGroupStore((s) => s.validateGroupInvite || s.validateInvite);
+  const joinGroupByInvite = useGroupStore((s) => s.joinGroupByInvite || s.joinGroupByCode);
 
   const [codeInput, setCodeInput] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -61,9 +65,9 @@ export default function JoinGroupScreen() {
   // QR Scanner State
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-  // Validate and display group preview
+  // Shared validation & group preview pipeline
   const handleValidateAndPreview = useCallback(
-    (codeToValidate: string) => {
+    async (codeToValidate: string) => {
       const normalized = (codeToValidate || '').trim().toUpperCase();
       if (!normalized) {
         setErrorMessage('Please enter an invite code.');
@@ -74,7 +78,7 @@ export default function JoinGroupScreen() {
       setIsValidating(true);
 
       try {
-        const result: InviteValidationResult = validateInvite(normalized);
+        const result: InviteValidationResult = await validateGroupInvite(normalized);
 
         if (result.status === 'valid') {
           setPreviewData({
@@ -90,8 +94,14 @@ export default function JoinGroupScreen() {
             code: normalized,
             isAlreadyMember: true,
           });
+        } else if (result.status === 'expired') {
+          setErrorMessage('This invite has expired.');
+        } else if (result.status === 'inactive') {
+          setErrorMessage('This invite is no longer active.');
+        } else if (result.status === 'group_deleted') {
+          setErrorMessage('This group is no longer available.');
         } else {
-          setErrorMessage(result.message);
+          setErrorMessage(result.message || 'Invalid invite code.');
         }
       } catch (e: any) {
         setErrorMessage('Failed to validate invite. Please try again.');
@@ -99,24 +109,26 @@ export default function JoinGroupScreen() {
         setIsValidating(false);
       }
     },
-    [validateInvite]
+    [validateGroupInvite]
   );
 
   // Automatically check if prefilled with code (e.g. from deep link or QR)
   useEffect(() => {
     if (paramCode) {
-      const parsed = parseInviteCodeFromUrlOrInput(paramCode);
-      if (parsed) {
-        setCodeInput(parsed);
-        handleValidateAndPreview(parsed);
+      const parsed = parseGroupInvitePayload(paramCode) || parseInviteCodeFromUrlOrInput(paramCode);
+      const code = typeof parsed === 'string' ? parsed : parsed?.code;
+      if (code) {
+        setCodeInput(code);
+        handleValidateAndPreview(code);
       }
     }
   }, [paramCode, handleValidateAndPreview]);
 
   // Handle Manual Input Submit
   const handleJoinPress = () => {
-    const parsed = parseInviteCodeFromUrlOrInput(codeInput) || codeInput.trim().toUpperCase();
-    handleValidateAndPreview(parsed);
+    const parsed = parseGroupInvitePayload(codeInput) || parseInviteCodeFromUrlOrInput(codeInput);
+    const code = typeof parsed === 'string' ? parsed : parsed?.code || codeInput.trim().toUpperCase();
+    handleValidateAndPreview(code);
   };
 
   // Open Scanner
@@ -125,10 +137,14 @@ export default function JoinGroupScreen() {
     setIsScannerOpen(true);
   };
 
-  // Barcode scanned callback
+
+
+  // Barcode scanned callback (Phase 11-15)
   const handleBarcodeScanned = (data: string) => {
-    const detectedCode = parseInviteCodeFromUrlOrInput(data);
-    if (!detectedCode) {
+    console.log('[GROUP QR] raw:', data);
+    const parsed = parseGroupInvitePayload(data);
+    console.log('[GROUP QR] parsed:', parsed?.code);
+    if (!parsed?.code) {
       showAlert(
         'Invalid QR Code',
         "This QR code isn't a valid Spendz group invite.",
@@ -145,8 +161,8 @@ export default function JoinGroupScreen() {
 
     // Successfully detected
     setIsScannerOpen(false);
-    setCodeInput(detectedCode);
-    handleValidateAndPreview(detectedCode);
+    setCodeInput(parsed.code);
+    handleValidateAndPreview(parsed.code);
   };
 
   // Confirm Joining Group
@@ -160,11 +176,11 @@ export default function JoinGroupScreen() {
 
     setIsJoining(true);
     try {
-      const result = joinGroupByCode(previewData.code);
+      const result = await joinGroupByInvite(previewData.code);
       if (result.success && result.group) {
         const targetId = result.group.id;
         setPreviewData(null);
-        // Immediate navigation to the group detail page
+        // Phase 8 & 9: Verified database membership before navigation
         router.replace(`/groups/${targetId}` as any);
       } else {
         showAlert('Cannot Join Group', result.message || 'Failed to join group.');
@@ -273,6 +289,8 @@ export default function JoinGroupScreen() {
               </>
             )}
           </TouchableOpacity>
+
+
         </View>
 
         {/* OR Divider */}
