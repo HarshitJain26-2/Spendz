@@ -33,6 +33,7 @@ import { useAppStore } from '@/store/appStore';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { GroupBalanceSummary, type GroupMemberBalanceItem } from '@/components/groups/GroupBalanceSummary';
 import { formatCurrency } from '@/utils/currency';
 import { formatRelativeDate, getTodayISO } from '@/utils/date';
 import { typography } from '@/theme/typography';
@@ -148,6 +149,39 @@ export default function GroupDetailScreen() {
     groups,
     getGroupSummary,
   ]);
+
+  // Aggregate what you owe / are owed by members in this group
+  const { groupMemberYouOwe, groupMemberOwedToYou, groupMemberBreakdown } = useMemo(() => {
+    let owe = 0;
+    let owed = 0;
+    const breakdown: GroupMemberBalanceItem[] = [];
+
+    for (const mb of memberBalances) {
+      if (mb.friendId === null) continue; // skip current user
+      const bal = mb.balanceWithMe;
+      if (bal !== 0) {
+        breakdown.push({
+          id: mb.friendId,
+          name: mb.name,
+          friendId: mb.friendId,
+          balance: bal,
+        });
+        if (bal > 0) {
+          owed += bal;
+        } else if (bal < 0) {
+          owe += Math.abs(bal);
+        }
+      }
+    }
+
+    breakdown.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+
+    return {
+      groupMemberYouOwe: owe,
+      groupMemberOwedToYou: owed,
+      groupMemberBreakdown: breakdown,
+    };
+  }, [memberBalances]);
 
   if (!group) {
     return (
@@ -452,6 +486,19 @@ export default function GroupDetailScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Group Member Balance Summary (Settled vs Debts) */}
+        <GroupBalanceSummary
+          totalYouOwe={groupMemberYouOwe}
+          totalOwedToYou={groupMemberOwedToYou}
+          breakdown={groupMemberBreakdown}
+          emptyNote="No pending debts or credits in this group."
+          onMemberPress={(item) => {
+            if (item.friendId) {
+              openSettleForFriend(item.friendId, item.balance);
+            }
+          }}
+        />
 
         {/* Sub-tab Switcher: [ Expenses ] [ Members ] */}
         <View
