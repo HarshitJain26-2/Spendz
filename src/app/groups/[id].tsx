@@ -35,6 +35,7 @@ import {
 } from '@/store/groupStore';
 import { useFriendStore } from '@/store/friendStore';
 import { useAppStore } from '@/store/appStore';
+import { useAuthStore } from '@/store/authStore';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -51,6 +52,8 @@ export default function GroupDetailScreen() {
   const { colors } = useTheme();
 
   const userProfile = useAppStore((s) => s.userProfile);
+  const authUser = useAuthStore((s) => s.user);
+  const currentUserId = authUser?.id || (userProfile.id !== 'user_spendz' ? userProfile.id : null);
 
   // Group store selectors (stable state slices)
   const groups = useGroupStore((s) => s.groups);
@@ -64,20 +67,40 @@ export default function GroupDetailScreen() {
   const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
 
-  // Initial hydration if store is empty on direct route entry
+  // Initial hydration from Supabase & Realtime subscription
   useEffect(() => {
-    if (useGroupStore.getState().groups.length === 0) {
-      useGroupStore.getState().loadGroups();
-    }
-  }, []);
+    if (!id) return;
+    useGroupStore.getState().loadGroupFromSupabase(id);
+
+    const unsubscribe = useGroupStore.getState().subscribeToGroupRealtime(id);
+    return () => {
+      unsubscribe();
+    };
+  }, [id]);
 
   const onRefresh = useCallback(async () => {
+    if (!id) return;
     setRefreshing(true);
-    useGroupStore.getState().loadGroups();
+    await useGroupStore.getState().loadGroupFromSupabase(id);
     setRefreshing(false);
-  }, []);
+  }, [id]);
 
   const group = useMemo(() => groups.find((g) => g.id === id), [groups, id]);
+
+  const isMemberMe = useCallback(
+    (m?: any | null) => {
+      if (!m) return false;
+      if (currentUserId && m.userId && m.userId === currentUserId) return true;
+      if (!currentUserId && m.friendId === null) return true;
+      return false;
+    },
+    [currentUserId]
+  );
+
+  const meMember = useMemo(
+    () => group?.members?.find((m) => isMemberMe(m)) || null,
+    [group?.members, isMemberMe]
+  );
 
   const [activeTab, setActiveTab] = useState<'expenses' | 'members'>('expenses');
 
@@ -122,8 +145,8 @@ export default function GroupDetailScreen() {
 
   // Derived Group Summary (Live Single Source of Truth)
   const groupSummary = useMemo(
-    () => calculateGroupSummary(expenses, settlements),
-    [expenses, settlements]
+    () => calculateGroupSummary(expenses, settlements, currentUserId),
+    [expenses, settlements, currentUserId]
   );
 
   const netBalanceForMe = groupSummary.netBalance;
@@ -137,10 +160,10 @@ export default function GroupDetailScreen() {
             expenses,
             settlements,
             friends,
-            userProfile.id
+            currentUserId
           )
         : [],
-    [group, expenses, settlements, friends, userProfile.id]
+    [group, expenses, settlements, friends, currentUserId]
   );
 
   // Aggregate what you owe / are owed by members in this group
@@ -156,6 +179,8 @@ export default function GroupDetailScreen() {
         breakdown.push({
           id: mb.memberId || mb.friendId || mb.userId || mb.name,
           name: mb.name,
+          memberId: mb.memberId,
+          userId: mb.userId,
           friendId: mb.friendId,
           balance: bal,
         });
@@ -226,16 +251,23 @@ export default function GroupDetailScreen() {
     );
   };
 
-  // Open Settle Up modal pre-filled for a specific friend
-  const openSettleForFriend = (friendId: string, balanceWithMe: number) => {
+  // Open Settle Up modal pre-filled for a specific member
+  const openSettleForMember = (mb: any, balanceWithMe: number) => {
+    const targetMember = group.members?.find((m) =>
+      m.id === mb.memberId ||
+      (mb.userId && m.userId === mb.userId) ||
+      (mb.friendId && m.friendId === mb.friendId)
+    );
+    const targetId = targetMember?.id || mb.memberId || mb.friendId;
+
     if (balanceWithMe < 0) {
-      // Me owes Friend -> Payer is Me (null), Receiver is Friend
+      // Me owes Target -> Payer is Me (null), Receiver is Target
       setSettlePayerId(null);
-      setSettleReceiverId(friendId);
+      setSettleReceiverId(targetId);
       setSettleAmount(String(Math.abs(balanceWithMe)));
     } else if (balanceWithMe > 0) {
-      // Friend owes Me -> Payer is Friend, Receiver is Me (null)
-      setSettlePayerId(friendId);
+      // Target owes Me -> Payer is Target, Receiver is Me (null)
+      setSettlePayerId(targetId);
       setSettleReceiverId(null);
       setSettleAmount(String(balanceWithMe));
     }
@@ -254,10 +286,22 @@ export default function GroupDetailScreen() {
       return;
     }
 
+    const payerMember = settlePayerId
+      ? group.members?.find((m) => m.id === settlePayerId || m.friendId === settlePayerId)
+      : meMember;
+
+    const receiverMember = settleReceiverId
+      ? group.members?.find((m) => m.id === settleReceiverId || m.friendId === settleReceiverId)
+      : meMember;
+
     addGroupSettlement({
       groupId: group.id,
-      fromFriendId: settlePayerId,
-      toFriendId: settleReceiverId,
+      fromMemberId: payerMember?.id || null,
+      fromUserId: payerMember?.userId || (isMemberMe(payerMember) ? currentUserId : null),
+      fromFriendId: payerMember?.friendId || null,
+      toMemberId: receiverMember?.id || null,
+      toUserId: receiverMember?.userId || (isMemberMe(receiverMember) ? currentUserId : null),
+      toFriendId: receiverMember?.friendId || null,
       amount: amt,
       date: getTodayISO(),
     });
@@ -450,15 +494,15 @@ export default function GroupDetailScreen() {
           <TouchableOpacity
             onPress={() => {
               // Pre-fill default payer / receiver
-              const nonZeroFriend = memberBalances.find(
-                (m) => m.friendId !== null && m.balanceWithMe !== 0
+              const nonZeroMember = memberBalances.find(
+                (m) => !m.isMe && m.balanceWithMe !== 0
               );
-              if (nonZeroFriend && nonZeroFriend.friendId) {
-                openSettleForFriend(nonZeroFriend.friendId, nonZeroFriend.balanceWithMe);
+              if (nonZeroMember) {
+                openSettleForMember(nonZeroMember, nonZeroMember.balanceWithMe);
               } else {
                 setSettlePayerId(null);
-                const firstFriend = group.members?.find((m) => m.friendId !== null);
-                setSettleReceiverId(firstFriend?.friendId || null);
+                const firstOther = group.members?.find((m) => !isMemberMe(m));
+                setSettleReceiverId(firstOther?.id || null);
                 setSettleAmount('');
                 setIsSettleModalOpen(true);
               }
@@ -487,9 +531,7 @@ export default function GroupDetailScreen() {
           breakdown={groupMemberBreakdown}
           emptyNote="No pending debts or credits in this group."
           onMemberPress={(item) => {
-            if (item.friendId) {
-              openSettleForFriend(item.friendId, item.balance);
-            }
+            openSettleForMember(item, item.balance);
           }}
         />
 
@@ -581,13 +623,29 @@ export default function GroupDetailScreen() {
               timelineItems.map((item) => {
                 if (item.type === 'expense') {
                   const exp = item.data;
-                  const isMePayer = exp.paidByFriendId === null;
-                  const payerName = isMePayer
-                    ? 'You'
-                    : exp.paidByFriend?.name || 'Friend';
+                  const isMePayer = Boolean(
+                    (currentUserId && exp.paidByUserId && exp.paidByUserId === currentUserId) ||
+                    (!currentUserId && exp.paidByFriendId === null)
+                  );
+                  let payerName = 'Member';
+                  if (isMePayer) {
+                    payerName = 'You';
+                  } else if (exp.paidByUserId) {
+                    const mem = group.members?.find((m) => m.userId === exp.paidByUserId);
+                    payerName = mem?.name || 'Member';
+                  } else if (exp.paidByMemberId) {
+                    const mem = group.members?.find((m) => m.id === exp.paidByMemberId);
+                    payerName = mem?.name || 'Member';
+                  } else if (exp.paidByFriend?.name) {
+                    payerName = exp.paidByFriend.name;
+                  } else if (exp.paidByFriendId) {
+                    const mem = group.members?.find((m) => m.friendId === exp.paidByFriendId);
+                    payerName = mem?.name || 'Member';
+                  }
 
-                  const myParticipant = exp.participants?.find(
-                    (p) => p.friendId === null
+                  const myParticipant = exp.participants?.find((p) =>
+                    (currentUserId && p.userId && p.userId === currentUserId) ||
+                    (!currentUserId && p.friendId === null)
                   );
                   const myShare = myParticipant
                     ? Number(myParticipant.shareAmount) || 0
@@ -671,10 +729,36 @@ export default function GroupDetailScreen() {
                 } else {
                   // Settlement record
                   const setl = item.data;
-                  const fromMe = setl.fromFriendId === null;
-                  const toMe = setl.toFriendId === null;
-                  const fromName = fromMe ? 'You' : setl.fromFriend?.name || 'Friend';
-                  const toName = toMe ? 'You' : setl.toFriend?.name || 'Friend';
+                  const fromMe = Boolean(
+                    (currentUserId && setl.fromUserId && setl.fromUserId === currentUserId) ||
+                    (!currentUserId && setl.fromFriendId === null)
+                  );
+                  const toMe = Boolean(
+                    (currentUserId && setl.toUserId && setl.toUserId === currentUserId) ||
+                    (!currentUserId && setl.toFriendId === null)
+                  );
+
+                  const getPartyName = (uId?: string | null, mId?: string | null, fId?: string | null, fObj?: any) => {
+                    if (currentUserId && uId && uId === currentUserId) return 'You';
+                    if (!currentUserId && fId === null) return 'You';
+                    if (uId) {
+                      const m = group.members?.find((gm) => gm.userId === uId);
+                      if (m?.name) return m.name;
+                    }
+                    if (mId) {
+                      const m = group.members?.find((gm) => gm.id === mId);
+                      if (m?.name) return m.name;
+                    }
+                    if (fObj?.name) return fObj.name;
+                    if (fId) {
+                      const m = group.members?.find((gm) => gm.friendId === fId);
+                      if (m?.name) return m.name;
+                    }
+                    return 'Member';
+                  };
+
+                  const fromName = fromMe ? 'You' : getPartyName(setl.fromUserId, setl.fromMemberId, setl.fromFriendId, setl.fromFriend);
+                  const toName = toMe ? 'You' : getPartyName(setl.toUserId, setl.toMemberId, setl.toFriendId, setl.toFriend);
 
                   return (
                     <View
@@ -827,9 +911,9 @@ export default function GroupDetailScreen() {
                     </View>
 
                     {/* Settle shortcut for non-me member with non-zero balance */}
-                    {!isMe && balanceWithMe !== 0 && mb.friendId && (
+                    {!isMe && balanceWithMe !== 0 && (
                       <TouchableOpacity
-                        onPress={() => openSettleForFriend(mb.friendId!, balanceWithMe)}
+                        onPress={() => openSettleForMember(mb, balanceWithMe)}
                         style={[
                           styles.inlineSettleBtn,
                           {
@@ -950,9 +1034,27 @@ export default function GroupDetailScreen() {
                     Paid by:
                   </Text>
                   <Text style={[styles.infoRowValue, { color: colors.textPrimary }]}>
-                    {selectedExpense.paidByFriendId === null
-                      ? 'You'
-                      : selectedExpense.paidByFriend?.name || 'Friend'}
+                    {(() => {
+                      const isMe = Boolean(
+                        (currentUserId && selectedExpense.paidByUserId && selectedExpense.paidByUserId === currentUserId) ||
+                        (!currentUserId && selectedExpense.paidByFriendId === null)
+                      );
+                      if (isMe) return 'You';
+                      if (selectedExpense.paidByUserId) {
+                        const m = group.members?.find((gm) => gm.userId === selectedExpense.paidByUserId);
+                        if (m?.name) return m.name;
+                      }
+                      if (selectedExpense.paidByMemberId) {
+                        const m = group.members?.find((gm) => gm.id === selectedExpense.paidByMemberId);
+                        if (m?.name) return m.name;
+                      }
+                      if (selectedExpense.paidByFriend?.name) return selectedExpense.paidByFriend.name;
+                      if (selectedExpense.paidByFriendId) {
+                        const m = group.members?.find((gm) => gm.friendId === selectedExpense.paidByFriendId);
+                        if (m?.name) return m.name;
+                      }
+                      return 'Member';
+                    })()}
                   </Text>
                 </View>
 
@@ -965,8 +1067,25 @@ export default function GroupDetailScreen() {
                   showsVerticalScrollIndicator={false}
                 >
                   {selectedExpense.participants?.map((p) => {
-                    const isMe = p.friendId === null;
-                    const pName = isMe ? 'You' : p.friend?.name || 'Friend';
+                    const isMe = Boolean(
+                      (currentUserId && p.userId && p.userId === currentUserId) ||
+                      (!currentUserId && p.friendId === null)
+                    );
+                    let pName = 'Member';
+                    if (isMe) {
+                      pName = 'You';
+                    } else if (p.userId) {
+                      const m = group.members?.find((gm) => gm.userId === p.userId);
+                      pName = m?.name || 'Member';
+                    } else if (p.memberId) {
+                      const m = group.members?.find((gm) => gm.id === p.memberId);
+                      pName = m?.name || 'Member';
+                    } else if (p.friend?.name) {
+                      pName = p.friend.name;
+                    } else if (p.friendId) {
+                      const m = group.members?.find((gm) => gm.friendId === p.friendId);
+                      pName = m?.name || 'Member';
+                    }
                     return (
                       <View
                         key={p.id}
@@ -1111,13 +1230,14 @@ export default function GroupDetailScreen() {
 
               {/* Other members */}
               {group.members
-                ?.filter((m) => m.friendId !== null)
+                ?.filter((m) => !isMemberMe(m))
                 .map((m) => {
-                  const isSelected = settlePayerId === m.friendId;
+                  const isSelected = settlePayerId === m.id;
+                  const memberName = m.name || m.friend?.name || 'Member';
                   return (
                     <TouchableOpacity
                       key={m.id}
-                      onPress={() => setSettlePayerId(m.friendId)}
+                      onPress={() => setSettlePayerId(m.id)}
                       style={[
                         styles.payerChip,
                         {
@@ -1138,7 +1258,7 @@ export default function GroupDetailScreen() {
                           },
                         ]}
                       >
-                        {m.friend?.name || 'Friend'}
+                        {memberName}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -1182,13 +1302,14 @@ export default function GroupDetailScreen() {
 
               {/* Other members */}
               {group.members
-                ?.filter((m) => m.friendId !== null)
+                ?.filter((m) => !isMemberMe(m))
                 .map((m) => {
-                  const isSelected = settleReceiverId === m.friendId;
+                  const isSelected = settleReceiverId === m.id;
+                  const memberName = m.name || m.friend?.name || 'Member';
                   return (
                     <TouchableOpacity
                       key={m.id}
-                      onPress={() => setSettleReceiverId(m.friendId)}
+                      onPress={() => setSettleReceiverId(m.id)}
                       style={[
                         styles.payerChip,
                         {
@@ -1209,7 +1330,7 @@ export default function GroupDetailScreen() {
                           },
                         ]}
                       >
-                        {m.friend?.name || 'Friend'}
+                        {memberName}
                       </Text>
                     </TouchableOpacity>
                   );

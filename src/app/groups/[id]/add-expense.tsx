@@ -16,6 +16,7 @@ import { ArrowLeft, Check, Trash2, Calendar } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useGroupStore } from '@/store/groupStore';
 import { useAppStore } from '@/store/appStore';
+import { useAuthStore } from '@/store/authStore';
 import { AmountInput } from '@/components/ui/AmountInput';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -24,6 +25,7 @@ import { formatCurrency } from '@/utils/currency';
 import { getTodayISO } from '@/utils/date';
 import { typography } from '@/theme/typography';
 import { spacing, borderRadius, shadows } from '@/theme/spacing';
+import type { GroupMember } from '@/types';
 
 export default function AddOrEditGroupExpenseScreen() {
   const { id, expenseId } = useLocalSearchParams<{ id: string; expenseId?: string }>();
@@ -31,6 +33,8 @@ export default function AddOrEditGroupExpenseScreen() {
   const { colors } = useTheme();
 
   const userProfile = useAppStore((s) => s.userProfile);
+  const authUser = useAuthStore((s) => s.user);
+  const currentUserId = authUser?.id || (userProfile.id !== 'user_spendz' ? userProfile.id : null);
 
   const groups = useGroupStore((s) => s.groups);
   const groupExpenses = useGroupStore((s) => s.groupExpenses);
@@ -47,12 +51,24 @@ export default function AddOrEditGroupExpenseScreen() {
 
   const isEditing = Boolean(existingExpense);
 
+  const isMemberMe = (m?: GroupMember | null) => {
+    if (!m) return false;
+    if (currentUserId && m.userId && m.userId === currentUserId) return true;
+    if (!currentUserId && m.friendId === null) return true;
+    return false;
+  };
+
+  const meMember = useMemo(
+    () => group?.members?.find((m) => isMemberMe(m)) || null,
+    [group?.members, currentUserId]
+  );
+
   // Form State
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(getTodayISO());
-  const [paidByFriendId, setPaidByFriendId] = useState<string | null>(null); // null = Me
-  const [selectedParticipantIds, setSelectedParticipantIds] = useState<Array<string | null>>([]);
+  const [paidByMemberId, setPaidByMemberId] = useState<string | null>(null); // null = Me
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [splitMethod, setSplitMethod] = useState<'equal' | 'custom'>('equal');
   const [customShares, setCustomShares] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,28 +76,48 @@ export default function AddOrEditGroupExpenseScreen() {
 
   // Initialize or prefill state
   useEffect(() => {
-    if (existingExpense) {
+    if (existingExpense && group?.members) {
       setDescription(existingExpense.description);
       setAmount(String(existingExpense.amount));
       setDate(existingExpense.date);
-      setPaidByFriendId(existingExpense.paidByFriendId);
       setSplitMethod(existingExpense.splitMethod);
 
-      const participantIds = existingExpense.participants?.map((p) => p.friendId) || [];
-      setSelectedParticipantIds(participantIds);
+      // Match payer to member
+      const payerMember = group.members.find((m) =>
+        (existingExpense.paidByMemberId && m.id === existingExpense.paidByMemberId) ||
+        (existingExpense.paidByUserId && m.userId === existingExpense.paidByUserId) ||
+        (existingExpense.paidByFriendId && m.friendId === existingExpense.paidByFriendId) ||
+        (existingExpense.paidByFriendId === null && isMemberMe(m))
+      );
+      if (payerMember && !isMemberMe(payerMember)) {
+        setPaidByMemberId(payerMember.id);
+      } else {
+        setPaidByMemberId(null);
+      }
 
+      const participantMemberIds: string[] = [];
       const sharesMap: Record<string, string> = {};
       existingExpense.participants?.forEach((p) => {
-        sharesMap[p.friendId === null ? 'me' : p.friendId] = String(p.shareAmount);
+        const m = group.members?.find((gm) =>
+          (p.memberId && gm.id === p.memberId) ||
+          (p.userId && gm.userId === p.userId) ||
+          (p.friendId && gm.friendId === p.friendId) ||
+          (p.friendId === null && isMemberMe(gm))
+        );
+        if (m) {
+          participantMemberIds.push(m.id);
+          sharesMap[m.id] = String(p.shareAmount);
+        }
       });
+      setSelectedParticipantIds(participantMemberIds);
       setCustomShares(sharesMap);
     } else if (group?.members) {
       // Default: all group members selected for split
-      const allMemberIds = group.members.map((m) => m.friendId);
+      const allMemberIds = group.members.map((m) => m.id);
       setSelectedParticipantIds(allMemberIds);
-      setPaidByFriendId(null); // Default paid by Me
+      setPaidByMemberId(null); // Default paid by Me
     }
-  }, [existingExpense, group]);
+  }, [existingExpense, group, currentUserId]);
 
   if (!group) {
     return (
@@ -102,7 +138,7 @@ export default function AddOrEditGroupExpenseScreen() {
   const numericAmount = parseFloat(amount) || 0;
 
   // Toggle participant in split
-  const toggleParticipant = (memberId: string | null) => {
+  const toggleParticipant = (memberId: string) => {
     setSelectedParticipantIds((prev) => {
       const exists = prev.includes(memberId);
       if (exists) {
@@ -127,15 +163,13 @@ export default function AddOrEditGroupExpenseScreen() {
     let remainder = Math.round((numericAmount - baseShare * count) * 100) / 100;
 
     const shares: Record<string, number> = {};
-    selectedParticipantIds.forEach((mId, index) => {
-      const key = mId === null ? 'me' : mId;
-      // Add cent remainder to the first member
+    selectedParticipantIds.forEach((mId) => {
       let share = baseShare;
       if (remainder > 0) {
         share = Math.round((share + 0.01) * 100) / 100;
         remainder = Math.round((remainder - 0.01) * 100) / 100;
       }
-      shares[key] = share;
+      shares[mId] = share;
     });
     return shares;
   }, [splitMethod, selectedParticipantIds, numericAmount]);
@@ -144,8 +178,7 @@ export default function AddOrEditGroupExpenseScreen() {
   const customSum = useMemo(() => {
     let sum = 0;
     selectedParticipantIds.forEach((mId) => {
-      const key = mId === null ? 'me' : mId;
-      const val = parseFloat(customShares[key] || '0') || 0;
+      const val = parseFloat(customShares[mId] || '0') || 0;
       sum += val;
     });
     return Math.round(sum * 100) / 100;
@@ -172,15 +205,32 @@ export default function AddOrEditGroupExpenseScreen() {
       return;
     }
 
-    // Build participants array
-    let participantsPayload: Array<{ friendId: string | null; shareAmount: number }> = [];
+    const payerMember = paidByMemberId
+      ? group.members?.find((m) => m.id === paidByMemberId)
+      : meMember;
+
+    const payerPayload = {
+      paidByMemberId: payerMember?.id || null,
+      paidByUserId: payerMember?.userId || (isMemberMe(payerMember) ? currentUserId : null),
+      paidByFriendId: payerMember?.friendId || null,
+    };
+
+    let participantsPayload: Array<{
+      friendId?: string | null;
+      memberId?: string | null;
+      userId?: string | null;
+      shareAmount: number;
+    }> = [];
 
     if (splitMethod === 'equal') {
       participantsPayload = selectedParticipantIds.map((mId) => {
-        const key = mId === null ? 'me' : mId;
+        const m = group.members?.find((mem) => mem.id === mId);
+        const isMe = isMemberMe(m);
         return {
-          friendId: mId,
-          shareAmount: equalShares[key] || 0,
+          memberId: m?.id || mId,
+          userId: m?.userId || (isMe ? currentUserId : null),
+          friendId: m?.friendId || null,
+          shareAmount: equalShares[mId] || 0,
         };
       });
     } else {
@@ -192,10 +242,13 @@ export default function AddOrEditGroupExpenseScreen() {
       }
 
       participantsPayload = selectedParticipantIds.map((mId) => {
-        const key = mId === null ? 'me' : mId;
-        const val = parseFloat(customShares[key] || '0') || 0;
+        const m = group.members?.find((mem) => mem.id === mId);
+        const isMe = isMemberMe(m);
+        const val = parseFloat(customShares[mId] || '0') || 0;
         return {
-          friendId: mId,
+          memberId: m?.id || mId,
+          userId: m?.userId || (isMe ? currentUserId : null),
+          friendId: m?.friendId || null,
           shareAmount: val,
         };
       });
@@ -210,9 +263,9 @@ export default function AddOrEditGroupExpenseScreen() {
           description: trimmedDesc,
           amount: numericAmount,
           date,
-          paidByFriendId,
           splitMethod,
           participants: participantsPayload,
+          ...payerPayload,
         });
       } else {
         addGroupExpense({
@@ -220,19 +273,18 @@ export default function AddOrEditGroupExpenseScreen() {
           description: trimmedDesc,
           amount: numericAmount,
           date,
-          paidByFriendId,
           splitMethod,
           participants: participantsPayload,
+          ...payerPayload,
         });
       }
-
       if (router.canGoBack()) {
         router.back();
       } else {
         router.replace(`/groups/${group.id}` as any);
       }
     } catch (e: any) {
-      setError(e?.message || 'Failed to save group expense');
+      setError(e?.message || 'Failed to save group expense.');
       setIsSubmitting(false);
     }
   };
@@ -325,7 +377,7 @@ export default function AddOrEditGroupExpenseScreen() {
           >
             {/* Option: Me */}
             <TouchableOpacity
-              onPress={() => setPaidByFriendId(null)}
+              onPress={() => setPaidByMemberId(null)}
               activeOpacity={0.7}
               style={[
                 styles.payerRow,
@@ -341,23 +393,23 @@ export default function AddOrEditGroupExpenseScreen() {
                   {myDisplayName} (You)
                 </Text>
               </View>
-              {paidByFriendId === null && (
+              {paidByMemberId === null && (
                 <Check size={18} color={colors.accent} strokeWidth={2.5} />
               )}
             </TouchableOpacity>
 
             {/* Other Group Members */}
             {group.members
-              ?.filter((m) => m.friendId !== null)
+              ?.filter((m) => !isMemberMe(m))
               .map((m, idx, arr) => {
-                const isSelected = paidByFriendId === m.friendId;
+                const isSelected = paidByMemberId === m.id;
                 const isLast = idx === arr.length - 1;
-                const friendName = m.friend?.name || 'Friend';
+                const memberName = m.name || m.friend?.name || 'Member';
 
                 return (
                   <TouchableOpacity
                     key={m.id}
-                    onPress={() => setPaidByFriendId(m.friendId)}
+                    onPress={() => setPaidByMemberId(m.id)}
                     activeOpacity={0.7}
                     style={[
                       styles.payerRow,
@@ -369,12 +421,13 @@ export default function AddOrEditGroupExpenseScreen() {
                   >
                     <View style={styles.payerLeft}>
                       <Avatar
-                        name={friendName}
+                        name={memberName}
+                        avatarUri={m.avatarUrl || undefined}
                         color={m.friend?.avatarColor}
                         size={32}
                       />
                       <Text style={[styles.payerName, { color: colors.textPrimary }]}>
-                        {friendName}
+                        {memberName}
                       </Text>
                     </View>
                     {isSelected && (
@@ -393,14 +446,14 @@ export default function AddOrEditGroupExpenseScreen() {
           </View>
           <View style={styles.participantChipsRow}>
             {group.members?.map((m) => {
-              const isMe = m.friendId === null;
-              const isSelected = selectedParticipantIds.includes(m.friendId);
-              const mName = isMe ? 'You' : m.friend?.name || 'Friend';
+              const isMe = isMemberMe(m);
+              const isSelected = selectedParticipantIds.includes(m.id);
+              const mName = isMe ? 'You' : m.name || m.friend?.name || 'Member';
 
               return (
                 <TouchableOpacity
                   key={m.id}
-                  onPress={() => toggleParticipant(m.friendId)}
+                  onPress={() => toggleParticipant(m.id)}
                   activeOpacity={0.7}
                   style={[
                     styles.participantChip,
@@ -415,7 +468,7 @@ export default function AddOrEditGroupExpenseScreen() {
                 >
                   <Avatar
                     name={mName}
-                    avatarUri={isMe ? userProfile.avatarUri : undefined}
+                    avatarUri={isMe ? userProfile.avatarUri : (m.avatarUrl || undefined)}
                     color={m.friend?.avatarColor}
                     size={24}
                   />
@@ -522,16 +575,15 @@ export default function AddOrEditGroupExpenseScreen() {
               </View>
 
               {selectedParticipantIds.map((mId, idx) => {
-                const isMe = mId === null;
-                const member = group.members?.find((m) => m.friendId === mId);
-                const name = isMe ? `${myDisplayName} (You)` : member?.friend?.name || 'Friend';
-                const key = isMe ? 'me' : mId!;
-                const share = equalShares[key] || 0;
+                const member = group.members?.find((m) => m.id === mId);
+                const isMe = isMemberMe(member);
+                const name = isMe ? `${myDisplayName} (You)` : member?.name || member?.friend?.name || 'Member';
+                const share = equalShares[mId] || 0;
                 const isLast = idx === selectedParticipantIds.length - 1;
 
                 return (
                   <View
-                    key={key}
+                    key={mId}
                     style={[
                       styles.shareRow,
                       {
@@ -581,14 +633,13 @@ export default function AddOrEditGroupExpenseScreen() {
               </View>
 
               {selectedParticipantIds.map((mId) => {
-                const isMe = mId === null;
-                const member = group.members?.find((m) => m.friendId === mId);
-                const name = isMe ? `${myDisplayName} (You)` : member?.friend?.name || 'Friend';
-                const key = isMe ? 'me' : mId!;
-                const currentShare = customShares[key] || '';
+                const member = group.members?.find((m) => m.id === mId);
+                const isMe = isMemberMe(member);
+                const name = isMe ? `${myDisplayName} (You)` : member?.name || member?.friend?.name || 'Member';
+                const currentShare = customShares[mId] || '';
 
                 return (
-                  <View key={key} style={styles.customInputRow}>
+                  <View key={mId} style={styles.customInputRow}>
                     <Text
                       style={[styles.customShareName, { color: colors.textPrimary }]}
                       numberOfLines={1}
@@ -611,7 +662,7 @@ export default function AddOrEditGroupExpenseScreen() {
                         value={currentShare}
                         onChangeText={(text) => {
                           const cleaned = text.replace(/[^0-9.]/g, '');
-                          setCustomShares((prev) => ({ ...prev, [key]: cleaned }));
+                          setCustomShares((prev) => ({ ...prev, [mId]: cleaned }));
                           if (error) setError(null);
                         }}
                         style={[styles.customShareInput, { color: colors.textPrimary }]}

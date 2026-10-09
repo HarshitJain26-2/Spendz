@@ -29,6 +29,8 @@ if (
 export interface GroupMemberBalanceItem {
   id: string;
   name: string;
+  memberId?: string | null;
+  userId?: string | null;
   friendId?: string | null;
   balance: number; // positive = owes you, negative = you owe
 }

@@ -41,10 +41,6 @@ export default function GroupsScreen() {
     }, [reloadData])
   );
 
-  useEffect(() => {
-    const unsub = navigation.addListener('focus', reloadData);
-    return unsub;
-  }, [navigation, reloadData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
