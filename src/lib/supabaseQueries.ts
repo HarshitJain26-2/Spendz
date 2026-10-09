@@ -17,10 +17,21 @@ type FriendRow = Database['public']['Tables']['friends']['Row'];
 type SplitExpenseRow = Database['public']['Tables']['split_expenses']['Row'];
 type SplitParticipantRow = Database['public']['Tables']['split_participants']['Row'];
 
+let hasLoggedMissingExpensesTable = false;
+let hasLoggedMissingSettlementsTable = false;
+let isExpensesTableAvailable: boolean | null = null;
+let isSettlementsTableAvailable: boolean | null = null;
+
 /**
  * Service providing typed queries and synchronization between the Spendz app and Supabase.
  */
 export const SupabaseQueries = {
+  isExpensesTableReady(): boolean {
+    return isExpensesTableAvailable !== false;
+  },
+  isSettlementsTableReady(): boolean {
+    return isSettlementsTableAvailable !== false;
+  },
   /**
    * Check if user is authenticated and Supabase is configured
    */
@@ -749,6 +760,422 @@ export const SupabaseQueries = {
     } catch (e: any) {
       console.error('[SUPABASE JOIN] Exception joining group:', e);
       return { success: false, message: e?.message || 'Internet connection is required to join a group.' };
+    }
+  },
+
+  async getGroupMembers(groupId: string): Promise<any[]> {
+    if (!isSupabaseConfigured()) return [];
+    try {
+      const { data, error } = await supabase
+        .from('group_members')
+        .select('*')
+        .eq('group_id', groupId);
+
+      if (error || !data) {
+        console.warn('[SUPABASE GROUP] Failed to fetch members:', error?.message);
+        return [];
+      }
+
+      const userIds = data.map((m: any) => m.user_id).filter(Boolean);
+      let profileMap = new Map<string, any>();
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .in('id', userIds);
+        if (profiles) {
+          profileMap = new Map(profiles.map((p: any) => [p.id, p]));
+        }
+      }
+
+      return data.map((m: any) => {
+        const prof = m.user_id ? profileMap.get(m.user_id) : null;
+        return {
+          id: m.id,
+          groupId: m.group_id,
+          userId: m.user_id,
+          friendId: null,
+          name: m.name || prof?.full_name || 'Member',
+          avatarUrl: m.avatar_url || prof?.avatar_url || null,
+          role: m.role || 'member',
+          createdAt: m.created_at,
+        };
+      });
+    } catch (e) {
+      console.error('[SUPABASE GROUP] Exception fetching group members:', e);
+      return [];
+    }
+  },
+
+  async getGroupDetails(groupId: string): Promise<{
+    group: any | null;
+    members: any[];
+    expenses: any[] | null;
+    settlements: any[] | null;
+  } | null> {
+    if (!isSupabaseConfigured()) return null;
+    try {
+      // 1. Group
+      const { data: groupData, error: groupErr } = await supabase
+        .from('groups')
+        .select('*')
+        .eq('id', groupId)
+        .maybeSingle();
+
+      if (groupErr || !groupData) {
+        console.warn('[SUPABASE GROUP] Failed to fetch group:', groupErr?.message);
+        return null;
+      }
+
+      // 2. Members
+      const members = await this.getGroupMembers(groupId);
+
+      // 3. Expenses
+      let expenses: any[] | null = null;
+      if (isExpensesTableAvailable !== false) {
+        const { data: expensesData, error: expErr } = await supabase
+          .from('group_expenses')
+          .select('*')
+          .eq('group_id', groupId)
+          .order('date', { ascending: false });
+
+        if (expErr) {
+          if (expErr.message?.includes('Could not find the table') || (expErr as any).code === 'PGRST205') {
+            isExpensesTableAvailable = false;
+            if (!hasLoggedMissingExpensesTable) {
+              hasLoggedMissingExpensesTable = true;
+              console.error(
+                '[SUPABASE SCHEMA MISSING] Table "public.group_expenses" does not exist in Supabase schema cache. Please execute migration 07_group_collaboration_and_realtime.sql in your Supabase SQL Editor.'
+              );
+            }
+          } else {
+            console.warn('[SUPABASE GROUP] Failed to fetch group expenses:', expErr.message);
+          }
+        } else {
+          isExpensesTableAvailable = true;
+          // 4. Participants
+          const expenseIds = (expensesData || []).map((e: any) => e.id);
+          let participantsByExpense = new Map<string, any[]>();
+          if (expenseIds.length > 0) {
+            const { data: partData, error: partErr } = await supabase
+              .from('group_expense_participants')
+              .select('*')
+              .in('group_expense_id', expenseIds);
+
+            if (!partErr && partData) {
+              for (const p of partData) {
+                const list = participantsByExpense.get(p.group_expense_id) || [];
+                list.push({
+                  id: p.id,
+                  groupExpenseId: p.group_expense_id,
+                  memberId: p.member_id,
+                  userId: p.user_id,
+                  friendId: p.member_id,
+                  shareAmount: Number(p.share_amount) || 0,
+                });
+                participantsByExpense.set(p.group_expense_id, list);
+              }
+            }
+          }
+
+          expenses = (expensesData || []).map((e: any) => ({
+            id: e.id,
+            groupId: e.group_id,
+            description: e.description,
+            amount: Number(e.amount) || 0,
+            paidByFriendId: e.paid_by_member_id,
+            paidByMemberId: e.paid_by_member_id,
+            paidByUserId: e.paid_by_user_id,
+            date: e.date,
+            splitMethod: e.split_method || 'equal',
+            createdAt: e.created_at,
+            updatedAt: e.updated_at,
+            participants: participantsByExpense.get(e.id) || [],
+          }));
+        }
+      }
+
+      // 5. Settlements
+      let settlements: any[] | null = null;
+      if (isSettlementsTableAvailable !== false) {
+        const { data: setlData, error: setlErr } = await supabase
+          .from('group_settlements')
+          .select('*')
+          .eq('group_id', groupId)
+          .order('date', { ascending: false });
+
+        if (setlErr) {
+          if (setlErr.message?.includes('Could not find the table') || (setlErr as any).code === 'PGRST205') {
+            isSettlementsTableAvailable = false;
+            if (!hasLoggedMissingSettlementsTable) {
+              hasLoggedMissingSettlementsTable = true;
+              console.error(
+                '[SUPABASE SCHEMA MISSING] Table "public.group_settlements" does not exist in Supabase schema cache. Please execute migration 07_group_collaboration_and_realtime.sql in your Supabase SQL Editor.'
+              );
+            }
+          } else {
+            console.warn('[SUPABASE GROUP] Failed to fetch group settlements:', setlErr.message);
+          }
+        } else {
+          isSettlementsTableAvailable = true;
+          settlements = (setlData || []).map((s: any) => ({
+            id: s.id,
+            groupId: s.group_id,
+            fromFriendId: s.from_member_id,
+            toFriendId: s.to_member_id,
+            fromMemberId: s.from_member_id,
+            fromUserId: s.from_user_id,
+            toMemberId: s.to_member_id,
+            toUserId: s.to_user_id,
+            amount: Number(s.amount) || 0,
+            date: s.date,
+            createdAt: s.created_at,
+          }));
+        }
+      }
+
+      return {
+        group: {
+          id: groupData.id,
+          name: groupData.name,
+          icon: groupData.icon,
+          createdAt: groupData.created_at,
+          updatedAt: groupData.updated_at,
+          members,
+        },
+        members,
+        expenses,
+        settlements,
+      };
+    } catch (e) {
+      console.error('[SUPABASE GROUP] Exception in getGroupDetails:', e);
+      return null;
+    }
+  },
+
+  async getUserGroups(): Promise<any[]> {
+    if (!isSupabaseConfigured()) return [];
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const authUser = authData?.user;
+      if (!authUser) return [];
+
+      const { data: memberships, error: memErr } = await supabase
+        .from('group_members')
+        .select('group_id')
+        .eq('user_id', authUser.id);
+
+      if (memErr || !memberships || memberships.length === 0) {
+        return [];
+      }
+
+      const groupIds = Array.from(new Set(memberships.map((m: any) => m.group_id)));
+      const { data: groups, error: grpErr } = await supabase
+        .from('groups')
+        .select('*')
+        .in('id', groupIds);
+
+      if (grpErr || !groups) {
+        console.warn('[SUPABASE GROUP] Failed to fetch user groups:', grpErr?.message);
+        return [];
+      }
+
+      return groups;
+    } catch (e) {
+      console.error('[SUPABASE GROUP] Exception fetching user groups:', e);
+      return [];
+    }
+  },
+
+
+  async createGroupExpenseInSupabase(
+    expense: any,
+    participants: any[]
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured()) return { success: true };
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const authUser = authData?.user;
+      if (!authUser) return { success: false, error: 'User not authenticated' };
+
+      const { error: expErr } = await supabase.from('group_expenses').upsert({
+        id: expense.id,
+        group_id: expense.groupId,
+        description: expense.description,
+        amount: expense.amount,
+        paid_by_member_id: expense.paidByMemberId || expense.paidByFriendId || null,
+        paid_by_user_id: expense.paidByUserId || null,
+        date: expense.date,
+        split_method: expense.splitMethod || 'equal',
+        created_by: authUser.id,
+        created_at: expense.createdAt,
+        updated_at: expense.updatedAt,
+      });
+
+      if (expErr) {
+        console.error('[SUPABASE GROUP] Failed to save group expense:', expErr.message);
+        return { success: false, error: expErr.message };
+      }
+
+      if (participants.length > 0) {
+        await supabase
+          .from('group_expense_participants')
+          .delete()
+          .eq('group_expense_id', expense.id);
+
+        const partRows = participants.map((p) => ({
+          id: p.id,
+          group_expense_id: expense.id,
+          group_id: expense.groupId,
+          member_id: p.memberId || p.friendId || null,
+          user_id: p.userId || null,
+          share_amount: p.shareAmount,
+        }));
+
+        const { error: partErr } = await supabase
+          .from('group_expense_participants')
+          .insert(partRows);
+
+        if (partErr) {
+          console.error('[SUPABASE GROUP] Failed to save expense participants:', partErr.message);
+          return { success: false, error: partErr.message };
+        }
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      console.error('[SUPABASE GROUP] Exception creating expense:', e);
+      return { success: false, error: e?.message };
+    }
+  },
+
+  async updateGroupExpenseInSupabase(
+    expenseId: string,
+    groupId: string,
+    updates: any,
+    participants: any[]
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured()) return { success: true };
+    try {
+      const expensePayload: any = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.description !== undefined) expensePayload.description = updates.description;
+      if (updates.amount !== undefined) expensePayload.amount = updates.amount;
+      if (updates.date !== undefined) expensePayload.date = updates.date;
+      if (updates.paidByFriendId !== undefined || updates.paidByMemberId !== undefined) {
+        expensePayload.paid_by_member_id = updates.paidByMemberId || updates.paidByFriendId || null;
+      }
+      if (updates.paidByUserId !== undefined) expensePayload.paid_by_user_id = updates.paidByUserId;
+      if (updates.splitMethod !== undefined) expensePayload.split_method = updates.splitMethod;
+
+      const { error: updateErr } = await supabase
+        .from('group_expenses')
+        .update(expensePayload)
+        .eq('id', expenseId);
+
+      if (updateErr) {
+        console.error('[SUPABASE GROUP] Failed to update group expense:', updateErr.message);
+        return { success: false, error: updateErr.message };
+      }
+
+      if (participants.length > 0) {
+        await supabase
+          .from('group_expense_participants')
+          .delete()
+          .eq('group_expense_id', expenseId);
+
+        const partRows = participants.map((p) => ({
+          id: p.id,
+          group_expense_id: expenseId,
+          group_id: groupId,
+          member_id: p.memberId || p.friendId || null,
+          user_id: p.userId || null,
+          share_amount: p.shareAmount,
+        }));
+
+        const { error: partErr } = await supabase
+          .from('group_expense_participants')
+          .insert(partRows);
+
+        if (partErr) {
+          console.error('[SUPABASE GROUP] Failed to update expense participants:', partErr.message);
+        }
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      console.error('[SUPABASE GROUP] Exception updating expense:', e);
+      return { success: false, error: e?.message };
+    }
+  },
+
+  async deleteGroupExpenseInSupabase(expenseId: string): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured()) return { success: true };
+    try {
+      const { error } = await supabase
+        .from('group_expenses')
+        .delete()
+        .eq('id', expenseId);
+
+      if (error) {
+        console.error('[SUPABASE GROUP] Failed to delete group expense:', error.message);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (e: any) {
+      console.error('[SUPABASE GROUP] Exception deleting expense:', e);
+      return { success: false, error: e?.message };
+    }
+  },
+
+  async createGroupSettlementInSupabase(settlement: any): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured()) return { success: true };
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const authUser = authData?.user;
+      if (!authUser) return { success: false, error: 'User not authenticated' };
+
+      const { error } = await supabase.from('group_settlements').upsert({
+        id: settlement.id,
+        group_id: settlement.groupId,
+        from_member_id: settlement.fromMemberId || settlement.fromFriendId || null,
+        from_user_id: settlement.fromUserId || null,
+        to_member_id: settlement.toMemberId || settlement.toFriendId || null,
+        to_user_id: settlement.toUserId || null,
+        amount: settlement.amount,
+        date: settlement.date,
+        created_by: authUser.id,
+        created_at: settlement.createdAt,
+      });
+
+      if (error) {
+        console.error('[SUPABASE GROUP] Failed to save group settlement:', error.message);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (e: any) {
+      console.error('[SUPABASE GROUP] Exception creating settlement:', e);
+      return { success: false, error: e?.message };
+    }
+  },
+
+  async deleteGroupSettlementInSupabase(settlementId: string): Promise<{ success: boolean; error?: string }> {
+    if (!isSupabaseConfigured()) return { success: true };
+    try {
+      const { error } = await supabase
+        .from('group_settlements')
+        .delete()
+        .eq('id', settlementId);
+
+      if (error) {
+        console.error('[SUPABASE GROUP] Failed to delete group settlement:', error.message);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (e: any) {
+      console.error('[SUPABASE GROUP] Exception deleting settlement:', e);
+      return { success: false, error: e?.message };
     }
   },
 };
