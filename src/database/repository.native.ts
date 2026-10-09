@@ -962,6 +962,91 @@ export const repository: DatabaseRepository = {
       .run();
   },
 
+  upsertGroup(group: Group) {
+    const db = getDb();
+    const existing = db.select().from(schema.groups).where(eq(schema.groups.id, group.id)).all();
+    if (existing.length > 0) {
+      db.update(schema.groups)
+        .set({
+          name: group.name,
+          icon: group.icon,
+          updatedAt: group.updatedAt,
+        })
+        .where(eq(schema.groups.id, group.id))
+        .run();
+    } else {
+      db.insert(schema.groups)
+        .values({
+          id: group.id,
+          name: group.name,
+          icon: group.icon,
+          createdAt: group.createdAt,
+          updatedAt: group.updatedAt,
+        })
+        .run();
+    }
+  },
+
+  upsertGroupMember(member: GroupMember) {
+    const db = getDb();
+    const existing = db.select().from(schema.groupMembers).where(eq(schema.groupMembers.id, member.id)).all();
+    if (existing.length > 0) {
+      db.update(schema.groupMembers)
+        .set({
+          name: member.name,
+          avatarUrl: member.avatarUrl,
+          role: member.role || 'member',
+          userId: member.userId || null,
+        })
+        .where(eq(schema.groupMembers.id, member.id))
+        .run();
+    } else {
+      db.insert(schema.groupMembers)
+        .values({
+          id: member.id,
+          groupId: member.groupId,
+          friendId: member.friendId || null,
+          userId: member.userId || null,
+          name: member.name || null,
+          avatarUrl: member.avatarUrl || null,
+          role: member.role || 'member',
+          createdAt: member.createdAt,
+        })
+        .run();
+    }
+  },
+
+  upsertGroupExpense(
+    expense: Omit<GroupExpense, 'participants'>,
+    participants: GroupExpenseParticipant[]
+  ) {
+    const db = getDb();
+    const existing = db.select().from(schema.groupExpenses).where(eq(schema.groupExpenses.id, expense.id)).all();
+    if (existing.length > 0) {
+      this.updateGroupExpense(expense.id, expense, participants);
+    } else {
+      this.addGroupExpense(expense, participants);
+    }
+  },
+
+  upsertGroupSettlement(settlement: GroupSettlement) {
+    const db = getDb();
+    const existing = db.select().from(schema.groupSettlements).where(eq(schema.groupSettlements.id, settlement.id)).all();
+    if (existing.length > 0) {
+      db.update(schema.groupSettlements)
+        .set({
+          fromFriendId: settlement.fromFriendId,
+          toFriendId: settlement.toFriendId,
+          amount: settlement.amount,
+          date: settlement.date,
+        })
+        .where(eq(schema.groupSettlements.id, settlement.id))
+        .run();
+    } else {
+      this.addGroupSettlement(settlement);
+    }
+  },
+
 
   // ─── Settings ────────────────────────────────────────────────────────
   getSetting(key: string): string | null {

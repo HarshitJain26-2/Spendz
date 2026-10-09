@@ -127,6 +127,8 @@ export interface GroupExpense {
   description: string;
   amount: number;
   paidByFriendId: string | null; // null = "You" (Me)
+  paidByMemberId?: string | null;
+  paidByUserId?: string | null;
   date: string;
   splitMethod: SplitMethod; // 'equal' | 'custom'
   createdAt: string;
@@ -140,6 +142,8 @@ export interface GroupExpenseParticipant {
   id: string;
   groupExpenseId: string;
   friendId: string | null; // null = "You" (Me)
+  memberId?: string | null;
+  userId?: string | null;
   shareAmount: number;
   // Joined
   friend?: Friend | null;
@@ -150,6 +154,10 @@ export interface GroupSettlement {
   groupId: string;
   fromFriendId: string | null; // null = "You" (Me)
   toFriendId: string | null; // null = "You" (Me)
+  fromMemberId?: string | null;
+  fromUserId?: string | null;
+  toMemberId?: string | null;
+  toUserId?: string | null;
   amount: number;
   date: string;
   createdAt: string;

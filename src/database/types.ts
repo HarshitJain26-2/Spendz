@@ -97,6 +97,15 @@ export interface DatabaseRepository {
   addGroupSettlement(settlement: GroupSettlement): void;
   deleteGroupSettlement(id: string): void;
 
+  // Group Sync / Upsert Helpers
+  upsertGroup(group: Group): void;
+  upsertGroupMember(member: GroupMember): void;
+  upsertGroupExpense(
+    expense: Omit<GroupExpense, 'participants'>,
+    participants: GroupExpenseParticipant[]
+  ): void;
+  upsertGroupSettlement(settlement: GroupSettlement): void;
+
   // Settings
   getSetting(key: string): string | null;
   setSetting(key: string, value: string): void;

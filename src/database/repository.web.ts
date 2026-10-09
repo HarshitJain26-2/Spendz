@@ -662,6 +662,54 @@ export const repository: DatabaseRepository = {
     setStorage(STORAGE_KEYS.GROUP_SETTLEMENTS, settlements.filter((s) => s.id !== id));
   },
 
+  upsertGroup(group: Group) {
+    const groups = getStorage<Group[]>(STORAGE_KEYS.GROUPS, []);
+    const index = groups.findIndex((g) => g.id === group.id);
+    if (index >= 0) {
+      groups[index] = { ...groups[index], ...group };
+    } else {
+      groups.push(group);
+    }
+    setStorage(STORAGE_KEYS.GROUPS, groups);
+  },
+
+  upsertGroupMember(member: GroupMember) {
+    const members = getStorage<GroupMember[]>(STORAGE_KEYS.GROUP_MEMBERS, []);
+    const index = members.findIndex((m) => m.id === member.id);
+    if (index >= 0) {
+      members[index] = { ...members[index], ...member };
+    } else {
+      members.push(member);
+    }
+    setStorage(STORAGE_KEYS.GROUP_MEMBERS, members);
+  },
+
+  upsertGroupExpense(
+    expense: Omit<GroupExpense, 'participants'>,
+    participants: GroupExpenseParticipant[]
+  ) {
+    const expenses = getStorage<Omit<GroupExpense, 'participants'>[]>(
+      STORAGE_KEYS.GROUP_EXPENSES,
+      []
+    );
+    const existing = expenses.find((e) => e.id === expense.id);
+    if (existing) {
+      this.updateGroupExpense(expense.id, expense, participants);
+    } else {
+      this.addGroupExpense(expense, participants);
+    }
+  },
+
+  upsertGroupSettlement(settlement: GroupSettlement) {
+    const settlements = getStorage<GroupSettlement[]>(STORAGE_KEYS.GROUP_SETTLEMENTS, []);
+    const index = settlements.findIndex((s) => s.id === settlement.id);
+    if (index >= 0) {
+      settlements[index] = { ...settlements[index], ...settlement };
+    } else {
+      this.addGroupSettlement(settlement);
+    }
+  },
+
 
   // ─── Settings ────────────────────────────────────────────────────────
   getSetting(key: string): string | null {

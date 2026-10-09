@@ -355,6 +355,114 @@ export interface Database {
           is_active?: boolean;
         };
       };
+      group_expenses: {
+        Row: {
+          id: string;
+          group_id: string;
+          description: string;
+          amount: number;
+          paid_by_member_id: string | null;
+          paid_by_user_id: string | null;
+          date: string;
+          split_method: string;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          group_id: string;
+          description: string;
+          amount: number;
+          paid_by_member_id?: string | null;
+          paid_by_user_id?: string | null;
+          date: string;
+          split_method?: string;
+          created_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          group_id?: string;
+          description?: string;
+          amount?: number;
+          paid_by_member_id?: string | null;
+          paid_by_user_id?: string | null;
+          date?: string;
+          split_method?: string;
+          created_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      group_expense_participants: {
+        Row: {
+          id: string;
+          group_expense_id: string;
+          group_id: string;
+          member_id: string | null;
+          user_id: string | null;
+          share_amount: number;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          group_expense_id: string;
+          group_id: string;
+          member_id?: string | null;
+          user_id?: string | null;
+          share_amount: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          group_expense_id?: string;
+          group_id?: string;
+          member_id?: string | null;
+          user_id?: string | null;
+          share_amount?: number;
+          created_at?: string;
+        };
+      };
+      group_settlements: {
+        Row: {
+          id: string;
+          group_id: string;
+          from_member_id: string | null;
+          from_user_id: string | null;
+          to_member_id: string | null;
+          to_user_id: string | null;
+          amount: number;
+          date: string;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          group_id: string;
+          from_member_id?: string | null;
+          from_user_id?: string | null;
+          to_member_id?: string | null;
+          to_user_id?: string | null;
+          amount: number;
+          date: string;
+          created_by?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          group_id?: string;
+          from_member_id?: string | null;
+          from_user_id?: string | null;
+          to_member_id?: string | null;
+          to_user_id?: string | null;
+          amount?: number;
+          date?: string;
+          created_by?: string;
+          created_at?: string;
+        };
+      };
     };
     Views: {
       view_user_monthly_summary: {
