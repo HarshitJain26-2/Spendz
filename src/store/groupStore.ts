@@ -17,6 +17,7 @@ import { useFriendStore } from './friendStore';
 import { useAppStore } from './appStore';
 import { useAuthStore } from './authStore';
 import { SupabaseQueries } from '@/lib/supabaseQueries';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export type InviteValidationResult =
   | { status: 'valid'; invite: GroupInvite; group: Group; memberNames: string[] }
@@ -33,6 +34,8 @@ interface GroupState {
   isLoading: boolean;
 
   loadGroups: () => void;
+  loadGroupFromSupabase: (groupId: string) => Promise<Group | null>;
+  subscribeToGroupRealtime: (groupId: string) => () => void;
   addGroup: (data: { name: string; icon?: string; memberFriendIds: string[] }) => Group;
   updateGroup: (id: string, data: { name?: string; icon?: string }) => void;
   deleteGroup: (id: string) => void;
@@ -44,10 +47,14 @@ interface GroupState {
     description: string;
     amount: number;
     date?: string;
-    paidByFriendId: string | null;
+    paidByFriendId?: string | null;
+    paidByMemberId?: string | null;
+    paidByUserId?: string | null;
     splitMethod: SplitMethod;
     participants: Array<{
-      friendId: string | null;
+      friendId?: string | null;
+      memberId?: string | null;
+      userId?: string | null;
       shareAmount: number;
     }>;
   }) => GroupExpense;
@@ -57,10 +64,14 @@ interface GroupState {
       description: string;
       amount: number;
       date: string;
-      paidByFriendId: string | null;
+      paidByFriendId?: string | null;
+      paidByMemberId?: string | null;
+      paidByUserId?: string | null;
       splitMethod: SplitMethod;
       participants: Array<{
-        friendId: string | null;
+        friendId?: string | null;
+        memberId?: string | null;
+        userId?: string | null;
         shareAmount: number;
       }>;
     }
@@ -69,8 +80,12 @@ interface GroupState {
 
   addGroupSettlement: (data: {
     groupId: string;
-    fromFriendId: string | null;
-    toFriendId: string | null;
+    fromFriendId?: string | null;
+    toFriendId?: string | null;
+    fromMemberId?: string | null;
+    fromUserId?: string | null;
+    toMemberId?: string | null;
+    toUserId?: string | null;
     amount: number;
     date?: string;
   }) => GroupSettlement;
@@ -102,7 +117,8 @@ interface GroupState {
 // ─── Scoped Balance Engine ──────────────────────────────────────────
 export function calculateGroupSummary(
   expenses: GroupExpense[],
-  settlements: GroupSettlement[] = []
+  settlements: GroupSettlement[] = [],
+  currentUserId?: string | null
 ): {
   totalExpenseAmount: number;
   totalYouPaid: number;
@@ -117,11 +133,19 @@ export function calculateGroupSummary(
     const amt = Number(exp.amount) || 0;
     totalExpenseAmount += amt;
 
-    if (exp.paidByFriendId === null) {
+    const isPaidByMe = Boolean(
+      (currentUserId && exp.paidByUserId && exp.paidByUserId === currentUserId) ||
+      (!currentUserId && exp.paidByFriendId === null)
+    );
+
+    if (isPaidByMe) {
       totalYouPaid += amt;
     }
 
-    const myParticipant = exp.participants?.find((p) => p.friendId === null);
+    const myParticipant = exp.participants?.find((p) =>
+      (currentUserId && p.userId && p.userId === currentUserId) ||
+      (!currentUserId && p.friendId === null)
+    );
     if (myParticipant) {
       yourShare += Number(myParticipant.shareAmount) || 0;
     }
@@ -132,10 +156,19 @@ export function calculateGroupSummary(
 
   for (const setl of settlements) {
     const amt = Number(setl.amount) || 0;
-    if (setl.fromFriendId === null) {
+    const isFromMe = Boolean(
+      (currentUserId && setl.fromUserId && setl.fromUserId === currentUserId) ||
+      (!currentUserId && setl.fromFriendId === null)
+    );
+    const isToMe = Boolean(
+      (currentUserId && setl.toUserId && setl.toUserId === currentUserId) ||
+      (!currentUserId && setl.toFriendId === null)
+    );
+
+    if (isFromMe) {
       settlementsPaidByMe += amt;
     }
-    if (setl.toFriendId === null) {
+    if (isToMe) {
       settlementsReceivedByMe += amt;
     }
   }
@@ -161,145 +194,166 @@ export function calculateGroupMemberBalances(
   if (!group) return [];
 
   const rawMembers = group.members || [];
-  const hasMe = rawMembers.some((m) => m.friendId === null);
-  const members: GroupMember[] = hasMe
-    ? rawMembers
-    : [{ id: `me-${group.id}`, groupId: group.id, friendId: null, createdAt: group.createdAt }, ...rawMembers];
+  const friendMap = new Map(friends.map((f) => [f.id, f]));
 
-  // Collect all known friend IDs from members, expenses, and settlements
-  const memberFriendIds = new Set<string | null>();
-  for (const m of members) {
-    memberFriendIds.add(m.friendId);
-  }
-  for (const exp of expenses) {
-    if (exp.paidByFriendId !== undefined) {
-      memberFriendIds.add(exp.paidByFriendId);
-    }
-    for (const p of exp.participants || []) {
-      if (p.friendId !== undefined) {
-        memberFriendIds.add(p.friendId);
-      }
-    }
-  }
-  for (const setl of settlements) {
-    if (setl.fromFriendId !== undefined) {
-      memberFriendIds.add(setl.fromFriendId);
-    }
-    if (setl.toFriendId !== undefined) {
-      memberFriendIds.add(setl.toFriendId);
-    }
+  // Helper to determine canonical member key:
+  // Prefer userId if registered, else friendId if local friend, else memberId
+  const getMemberKey = (m: { id?: string; userId?: string | null; friendId?: string | null }) => {
+    if (m.userId) return `user:${m.userId}`;
+    if (m.friendId) return `friend:${m.friendId}`;
+    if (m.id) return `member:${m.id}`;
+    return 'unknown';
+  };
+
+  // Find or identify "Me"
+  let meMember = rawMembers.find((m) =>
+    (currentUserId && m.userId && m.userId === currentUserId) ||
+    (!currentUserId && m.friendId === null)
+  );
+
+  const members: GroupMember[] = [...rawMembers];
+  if (!meMember) {
+    meMember = {
+      id: `me-${group.id}`,
+      groupId: group.id,
+      friendId: null,
+      userId: currentUserId || null,
+      name: 'You',
+      createdAt: group.createdAt,
+    };
+    members.unshift(meMember);
   }
 
-  const balanceWithMeMap = new Map<string | null, number>();
-  const totalPaidMap = new Map<string | null, number>();
-  const totalShareMap = new Map<string | null, number>();
+  const meKey = getMemberKey(meMember);
 
-  for (const mId of memberFriendIds) {
-    balanceWithMeMap.set(mId, 0);
-    totalPaidMap.set(mId, 0);
-    totalShareMap.set(mId, 0);
-  }
+  // Map to easily look up member key from memberId, friendId, or userId
+  const resolveEntityKey = (options: {
+    userId?: string | null;
+    memberId?: string | null;
+    friendId?: string | null;
+  }): string => {
+    if (options.userId) return `user:${options.userId}`;
+    if (options.memberId) {
+      const match = members.find((m) => m.id === options.memberId);
+      if (match) return getMemberKey(match);
+      return `member:${options.memberId}`;
+    }
+    if (options.friendId === null) {
+      return meKey;
+    }
+    if (options.friendId) {
+      const match = members.find((m) => m.friendId === options.friendId);
+      if (match) return getMemberKey(match);
+      return `friend:${options.friendId}`;
+    }
+    return meKey;
+  };
+
+  // Track all participating keys
+  const allKeys = new Set<string>();
+  members.forEach((m) => allKeys.add(getMemberKey(m)));
+
+  const totalPaidMap = new Map<string, number>();
+  const totalShareMap = new Map<string, number>();
+  // balanceWithMeMap: positive = owes Me, negative = Me owes them
+  const balanceWithMeMap = new Map<string, number>();
+
+  const initKey = (k: string) => {
+    if (!totalPaidMap.has(k)) totalPaidMap.set(k, 0);
+    if (!totalShareMap.has(k)) totalShareMap.set(k, 0);
+    if (!balanceWithMeMap.has(k)) balanceWithMeMap.set(k, 0);
+  };
+
+  allKeys.forEach(initKey);
 
   // Process expenses
   for (const exp of expenses) {
-    const payer = exp.paidByFriendId ?? null;
+    const payerKey = resolveEntityKey({
+      userId: exp.paidByUserId,
+      memberId: exp.paidByMemberId,
+      friendId: exp.paidByFriendId,
+    });
+    initKey(payerKey);
+
     const expAmount = Number(exp.amount) || 0;
-    totalPaidMap.set(payer, (totalPaidMap.get(payer) || 0) + expAmount);
+    totalPaidMap.set(payerKey, (totalPaidMap.get(payerKey) || 0) + expAmount);
 
-    const participants = exp.participants || [];
-    for (const p of participants) {
-      const pId = p.friendId ?? null;
+    for (const p of exp.participants || []) {
+      const pKey = resolveEntityKey({
+        userId: p.userId,
+        memberId: p.memberId,
+        friendId: p.friendId,
+      });
+      initKey(pKey);
+
       const share = Number(p.shareAmount) || 0;
-      totalShareMap.set(pId, (totalShareMap.get(pId) || 0) + share);
+      totalShareMap.set(pKey, (totalShareMap.get(pKey) || 0) + share);
 
-      if (payer === null && pId !== null) {
-        const current = balanceWithMeMap.get(pId) || 0;
-        balanceWithMeMap.set(pId, current + share);
-      } else if (payer !== null && pId === null) {
-        const current = balanceWithMeMap.get(payer) || 0;
-        balanceWithMeMap.set(payer, current - share);
+      if (payerKey === meKey && pKey !== meKey) {
+        // I paid for pKey, so pKey owes Me
+        balanceWithMeMap.set(pKey, (balanceWithMeMap.get(pKey) || 0) + share);
+      } else if (payerKey !== meKey && pKey === meKey) {
+        // payerKey paid for Me, so I owe payerKey
+        balanceWithMeMap.set(payerKey, (balanceWithMeMap.get(payerKey) || 0) - share);
       }
     }
   }
 
   // Process settlements
   for (const setl of settlements) {
-    const from = setl.fromFriendId ?? null;
-    const to = setl.toFriendId ?? null;
-    const amt = Number(setl.amount) || 0;
-
-    totalPaidMap.set(from, (totalPaidMap.get(from) || 0) + amt);
-    totalShareMap.set(to, (totalShareMap.get(to) || 0) + amt);
-
-    if (from === null && to !== null) {
-      const current = balanceWithMeMap.get(to) || 0;
-      balanceWithMeMap.set(to, current + amt);
-    } else if (from !== null && to === null) {
-      const current = balanceWithMeMap.get(from) || 0;
-      balanceWithMeMap.set(from, current - amt);
-    }
-  }
-
-  const friendMap = new Map(friends.map((f) => [f.id, f]));
-  const allMembersList: Array<{
-    memberId: string;
-    friendId: string | null;
-    userId: string | null;
-    name: string;
-    friend: Friend | null;
-    isMe: boolean;
-  }> = [];
-
-  for (const m of members) {
-    const friendObj = m.friendId ? friendMap.get(m.friendId) || m.friend || null : null;
-    const isMe = Boolean(
-      (currentUserId && m.userId && m.userId === currentUserId) ||
-      (m.friendId === null && (!m.userId || (currentUserId && m.userId === currentUserId)))
-    );
-    const displayName = isMe ? 'You' : m.name || friendObj?.name || 'Member';
-    allMembersList.push({
-      memberId: m.id,
-      friendId: m.friendId,
-      userId: m.userId || null,
-      name: displayName,
-      friend: friendObj,
-      isMe,
+    const fromKey = resolveEntityKey({
+      userId: setl.fromUserId,
+      memberId: setl.fromMemberId,
+      friendId: setl.fromFriendId,
     });
-  }
+    const toKey = resolveEntityKey({
+      userId: setl.toUserId,
+      memberId: setl.toMemberId,
+      friendId: setl.toFriendId,
+    });
+    initKey(fromKey);
+    initKey(toKey);
 
-  for (const fId of memberFriendIds) {
-    if (fId && !members.some((m) => m.friendId === fId)) {
-      const friendObj = friendMap.get(fId) || null;
-      allMembersList.push({
-        memberId: `friend-${fId}`,
-        friendId: fId,
-        userId: null,
-        name: friendObj?.name || 'Member',
-        friend: friendObj,
-        isMe: false,
-      });
+    const amt = Number(setl.amount) || 0;
+    totalPaidMap.set(fromKey, (totalPaidMap.get(fromKey) || 0) + amt);
+    totalShareMap.set(toKey, (totalShareMap.get(toKey) || 0) + amt);
+
+    if (fromKey === meKey && toKey !== meKey) {
+      // I paid toKey, reducing what I owe them or increasing what they owe me
+      balanceWithMeMap.set(toKey, (balanceWithMeMap.get(toKey) || 0) + amt);
+    } else if (fromKey !== meKey && toKey === meKey) {
+      // fromKey paid Me, reducing what they owe me
+      balanceWithMeMap.set(fromKey, (balanceWithMeMap.get(fromKey) || 0) - amt);
     }
   }
 
-  return allMembersList.map((m) => {
-    const mId = m.friendId;
-    const paid = totalPaidMap.get(mId) || 0;
-    const share = totalShareMap.get(mId) || 0;
+  // Build the returned list
+  return members.map((m) => {
+    const mKey = getMemberKey(m);
+    const isMe = mKey === meKey;
+    const friendObj = m.friendId ? friendMap.get(m.friendId) || m.friend || null : null;
+    const displayName = isMe ? 'You' : m.name || friendObj?.name || 'Member';
+
+    const paid = totalPaidMap.get(mKey) || 0;
+    const share = totalShareMap.get(mKey) || 0;
     const overallNet = Math.round((paid - share) * 100) / 100;
-    const withMe = m.isMe ? overallNet : Math.round((balanceWithMeMap.get(mId) || 0) * 100) / 100;
+    const withMe = isMe ? overallNet : Math.round((balanceWithMeMap.get(mKey) || 0) * 100) / 100;
 
     return {
-      memberId: m.memberId,
-      friendId: mId,
-      userId: m.userId,
-      friend: m.friend,
-      name: m.name,
+      memberId: m.id,
+      userId: m.userId || null,
+      friendId: m.friendId || null,
+      friend: friendObj,
+      name: displayName,
       balance: overallNet,
       balanceWithMe: withMe,
-      isMe: m.isMe,
+      isMe,
     };
   });
 }
+
+let isSyncingUserGroups = false;
+const inFlightHydrations = new Map<string, Promise<any>>();
 
 export const useGroupStore = create<GroupState>((set, get) => ({
   groups: [],
@@ -316,6 +370,158 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     } catch (e) {
       console.error('Failed to load groups data:', e);
     }
+
+    // In background, sync user's groups from Supabase safely
+    if (isSupabaseConfigured() && !isSyncingUserGroups) {
+      isSyncingUserGroups = true;
+      (async () => {
+        try {
+          const remoteGroups = await SupabaseQueries.getUserGroups();
+          for (const rg of remoteGroups) {
+            await get().loadGroupFromSupabase(rg.id);
+          }
+        } catch (e) {
+          console.warn('[GROUP STORE] Background group sync failed:', e);
+        } finally {
+          isSyncingUserGroups = false;
+        }
+      })();
+    }
+  },
+
+  loadGroupFromSupabase: async (groupId: string) => {
+    if (!groupId) return null;
+    if (inFlightHydrations.has(groupId)) {
+      return inFlightHydrations.get(groupId);
+    }
+
+    const hydrationPromise = (async () => {
+      try {
+        console.log('[GROUP STORE] Hydrating group from Supabase:', groupId);
+        const remoteData = await SupabaseQueries.getGroupDetails(groupId);
+        if (!remoteData || !remoteData.group) {
+          console.log('[GROUP STORE] No remote group found in Supabase for id:', groupId);
+          return get().getGroupById(groupId) || null;
+        }
+
+        const { group: remoteGroup, members, expenses, settlements } = remoteData;
+
+        // 1. Cache to local repository (only overwrite expenses/settlements if cleanly fetched)
+        try {
+          repository.upsertGroup(remoteGroup);
+          for (const m of members) {
+            repository.upsertGroupMember(m);
+          }
+          if (expenses !== null) {
+            for (const exp of expenses) {
+              repository.upsertGroupExpense(exp, exp.participants || []);
+            }
+          }
+          if (settlements !== null) {
+            for (const setl of settlements) {
+              repository.upsertGroupSettlement(setl);
+            }
+          }
+        } catch (repoErr) {
+          console.warn('[GROUP STORE] Local cache error during Supabase hydration:', repoErr);
+        }
+
+        // 2. Hydrate Zustand in-memory state safely
+        set((state) => {
+          const groupExists = state.groups.some((g) => g.id === groupId);
+          const updatedGroups = groupExists
+            ? state.groups.map((g) => (g.id === groupId ? { ...remoteGroup, members } : g))
+            : [{ ...remoteGroup, members }, ...state.groups];
+
+          const updatedExpenses = expenses !== null
+            ? [...expenses, ...state.groupExpenses.filter((e) => e.groupId !== groupId)]
+            : state.groupExpenses;
+
+          const updatedSettlements = settlements !== null
+            ? [...settlements, ...state.groupSettlements.filter((s) => s.groupId !== groupId)]
+            : state.groupSettlements;
+
+          return {
+            groups: updatedGroups,
+            groupExpenses: updatedExpenses,
+            groupSettlements: updatedSettlements,
+          };
+        });
+
+        return get().getGroupById(groupId) || remoteGroup;
+      } catch (e) {
+        console.error('[GROUP STORE] Failed to load group from Supabase:', e);
+        return get().getGroupById(groupId) || null;
+      } finally {
+        inFlightHydrations.delete(groupId);
+      }
+    })();
+
+    inFlightHydrations.set(groupId, hydrationPromise);
+    return hydrationPromise;
+  },
+
+  subscribeToGroupRealtime: (groupId: string) => {
+    if (!isSupabaseConfigured() || !groupId) {
+      return () => {};
+    }
+
+    console.log('[GROUP STORE] Subscribing to Supabase Realtime for group:', groupId);
+    const channelName = `group-live-${groupId}`;
+
+    let debounceTimer: any = null;
+    const triggerReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        console.log('[GROUP STORE REALTIME] Change detected for group', groupId, '- rehydrating...');
+        get().loadGroupFromSupabase(groupId);
+      }, 200);
+    };
+
+    let channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'group_members', filter: `group_id=eq.${groupId}` },
+        () => triggerReload()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'groups', filter: `id=eq.${groupId}` },
+        () => triggerReload()
+      );
+
+    if (SupabaseQueries.isExpensesTableReady()) {
+      channel = channel
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'group_expenses', filter: `group_id=eq.${groupId}` },
+          () => triggerReload()
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'group_expense_participants', filter: `group_id=eq.${groupId}` },
+          () => triggerReload()
+        );
+    }
+
+    if (SupabaseQueries.isSettlementsTableReady()) {
+      channel = channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'group_settlements', filter: `group_id=eq.${groupId}` },
+        () => triggerReload()
+      );
+    }
+
+    channel.subscribe((status) => {
+      console.log(`[GROUP STORE REALTIME] Subscription status for group ${groupId}:`, status);
+    });
+
+    return () => {
+      console.log('[GROUP STORE REALTIME] Unsubscribing channel for group:', groupId);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
   },
 
   addGroup: (data) => {
@@ -487,29 +693,81 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     const date = data.date || now;
     const amount = Number(data.amount) || 0;
 
+    const group = get().getGroupById(data.groupId) || repository.getGroups().find((g) => g.id === data.groupId);
+    const authUser = useAuthStore.getState().user;
+    const currentProfile = useAppStore.getState().userProfile;
+    const currentUserId = authUser?.id || (currentProfile.id !== 'user_spendz' ? currentProfile.id : null);
+
     const friends = useFriendStore.getState().friends;
     const friendMap = new Map(friends.map((f) => [f.id, f]));
 
-    const participantRecords: GroupExpenseParticipant[] = data.participants.map((p) => ({
-      id: generateId(),
-      groupExpenseId: expenseId,
-      friendId: p.friendId,
-      shareAmount: Number(p.shareAmount) || 0,
-      friend: p.friendId ? friendMap.get(p.friendId) || null : null,
-    }));
+    // Resolve payer
+    let paidByMemberId = data.paidByMemberId || null;
+    let paidByUserId = data.paidByUserId || null;
+    let paidByFriendId = data.paidByFriendId !== undefined ? data.paidByFriendId : null;
+
+    if (!paidByMemberId && group?.members) {
+      if (paidByFriendId === null) {
+        const meM = group.members.find((m) => (currentUserId && m.userId === currentUserId) || m.friendId === null);
+        if (meM) {
+          paidByMemberId = meM.id;
+          paidByUserId = meM.userId || currentUserId || null;
+        }
+      } else {
+        const friendM = group.members.find((m) => m.friendId === paidByFriendId || m.id === paidByFriendId);
+        if (friendM) {
+          paidByMemberId = friendM.id;
+          paidByUserId = friendM.userId || null;
+        }
+      }
+    }
+
+    const participantRecords: GroupExpenseParticipant[] = data.participants.map((p) => {
+      let pMemberId = p.memberId || null;
+      let pUserId = p.userId || null;
+      let pFriendId = p.friendId !== undefined ? p.friendId : null;
+
+      if (!pMemberId && group?.members) {
+        if (pFriendId === null) {
+          const meM = group.members.find((m) => (currentUserId && m.userId === currentUserId) || m.friendId === null);
+          if (meM) {
+            pMemberId = meM.id;
+            pUserId = meM.userId || currentUserId || null;
+          }
+        } else {
+          const friendM = group.members.find((m) => m.friendId === pFriendId || m.id === pFriendId);
+          if (friendM) {
+            pMemberId = friendM.id;
+            pUserId = friendM.userId || null;
+          }
+        }
+      }
+
+      return {
+        id: generateId(),
+        groupExpenseId: expenseId,
+        friendId: pFriendId,
+        memberId: pMemberId,
+        userId: pUserId,
+        shareAmount: Number(p.shareAmount) || 0,
+        friend: pFriendId ? friendMap.get(pFriendId) || null : null,
+      };
+    });
 
     const newExpense: GroupExpense = {
       id: expenseId,
       groupId: data.groupId,
       description: data.description.trim(),
       amount,
-      paidByFriendId: data.paidByFriendId,
+      paidByFriendId,
+      paidByMemberId,
+      paidByUserId,
       date,
       splitMethod: data.splitMethod,
       createdAt: now,
       updatedAt: now,
       participants: participantRecords,
-      paidByFriend: data.paidByFriendId ? friendMap.get(data.paidByFriendId) || null : null,
+      paidByFriend: paidByFriendId ? friendMap.get(paidByFriendId) || null : null,
     };
 
     repository.addGroupExpense(
@@ -518,7 +776,9 @@ export const useGroupStore = create<GroupState>((set, get) => ({
         groupId: data.groupId,
         description: data.description.trim(),
         amount,
-        paidByFriendId: data.paidByFriendId,
+        paidByFriendId,
+        paidByMemberId,
+        paidByUserId,
         date,
         splitMethod: data.splitMethod,
         createdAt: now,
@@ -529,7 +789,12 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
     repository.updateGroup(data.groupId, { updatedAt: now });
 
-    // Immediately update Zustand in-memory state for instant reactive UI updates
+    if (authUser?.id) {
+      SupabaseQueries.createGroupExpenseInSupabase(newExpense, participantRecords).catch((err) => {
+        console.warn('[GROUP STORE] Failed to sync new expense to Supabase:', err);
+      });
+    }
+
     set((state) => ({
       groupExpenses: [newExpense, ...state.groupExpenses.filter((e) => e.id !== expenseId)],
       groups: state.groups.map((g) =>
@@ -545,23 +810,74 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     const amount = Number(data.amount) || 0;
     const existing = get().groupExpenses.find((e) => e.id === expenseId);
     const targetGroupId = existing?.groupId;
+    const group = targetGroupId ? get().getGroupById(targetGroupId) : null;
+
+    const authUser = useAuthStore.getState().user;
+    const currentProfile = useAppStore.getState().userProfile;
+    const currentUserId = authUser?.id || (currentProfile.id !== 'user_spendz' ? currentProfile.id : null);
 
     const friends = useFriendStore.getState().friends;
     const friendMap = new Map(friends.map((f) => [f.id, f]));
 
-    const participantRecords: GroupExpenseParticipant[] = data.participants.map((p) => ({
-      id: generateId(),
-      groupExpenseId: expenseId,
-      friendId: p.friendId,
-      shareAmount: Number(p.shareAmount) || 0,
-      friend: p.friendId ? friendMap.get(p.friendId) || null : null,
-    }));
+    let paidByMemberId = data.paidByMemberId || existing?.paidByMemberId || null;
+    let paidByUserId = data.paidByUserId || existing?.paidByUserId || null;
+    let paidByFriendId = data.paidByFriendId !== undefined ? data.paidByFriendId : existing?.paidByFriendId || null;
+
+    if (!paidByMemberId && group?.members) {
+      if (paidByFriendId === null) {
+        const meM = group.members.find((m) => (currentUserId && m.userId === currentUserId) || m.friendId === null);
+        if (meM) {
+          paidByMemberId = meM.id;
+          paidByUserId = meM.userId || currentUserId || null;
+        }
+      } else {
+        const friendM = group.members.find((m) => m.friendId === paidByFriendId || m.id === paidByFriendId);
+        if (friendM) {
+          paidByMemberId = friendM.id;
+          paidByUserId = friendM.userId || null;
+        }
+      }
+    }
+
+    const participantRecords: GroupExpenseParticipant[] = data.participants.map((p) => {
+      let pMemberId = p.memberId || null;
+      let pUserId = p.userId || null;
+      let pFriendId = p.friendId !== undefined ? p.friendId : null;
+
+      if (!pMemberId && group?.members) {
+        if (pFriendId === null) {
+          const meM = group.members.find((m) => (currentUserId && m.userId === currentUserId) || m.friendId === null);
+          if (meM) {
+            pMemberId = meM.id;
+            pUserId = meM.userId || currentUserId || null;
+          }
+        } else {
+          const friendM = group.members.find((m) => m.friendId === pFriendId || m.id === pFriendId);
+          if (friendM) {
+            pMemberId = friendM.id;
+            pUserId = friendM.userId || null;
+          }
+        }
+      }
+
+      return {
+        id: generateId(),
+        groupExpenseId: expenseId,
+        friendId: pFriendId,
+        memberId: pMemberId,
+        userId: pUserId,
+        shareAmount: Number(p.shareAmount) || 0,
+        friend: pFriendId ? friendMap.get(pFriendId) || null : null,
+      };
+    });
 
     const updates: Partial<Omit<GroupExpense, 'participants'>> = {
       description: data.description.trim(),
       amount,
       date: data.date,
-      paidByFriendId: data.paidByFriendId,
+      paidByFriendId,
+      paidByMemberId,
+      paidByUserId,
       splitMethod: data.splitMethod,
       updatedAt: now,
     };
@@ -570,6 +886,11 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
     if (targetGroupId) {
       repository.updateGroup(targetGroupId, { updatedAt: now });
+      if (authUser?.id) {
+        SupabaseQueries.updateGroupExpenseInSupabase(expenseId, targetGroupId, updates, participantRecords).catch((err) => {
+          console.warn('[GROUP STORE] Failed to sync expense update to Supabase:', err);
+        });
+      }
     }
 
     const updatedExpense: GroupExpense = {
@@ -580,11 +901,13 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       description: data.description.trim(),
       amount,
       date: data.date,
-      paidByFriendId: data.paidByFriendId,
+      paidByFriendId,
+      paidByMemberId,
+      paidByUserId,
       splitMethod: data.splitMethod,
       updatedAt: now,
       participants: participantRecords,
-      paidByFriend: data.paidByFriendId ? friendMap.get(data.paidByFriendId) || null : null,
+      paidByFriend: paidByFriendId ? friendMap.get(paidByFriendId) || null : null,
     };
 
     set((state) => ({
@@ -605,6 +928,12 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
     if (target?.groupId) {
       repository.updateGroup(target.groupId, { updatedAt: now });
+      const authUser = useAuthStore.getState().user;
+      if (authUser?.id) {
+        SupabaseQueries.deleteGroupExpenseInSupabase(expenseId).catch((err) => {
+          console.warn('[GROUP STORE] Failed to delete expense in Supabase:', err);
+        });
+      }
     }
 
     set((state) => ({
@@ -621,23 +950,76 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     const date = data.date || now;
     const amount = Number(data.amount) || 0;
 
+    const group = get().getGroupById(data.groupId) || repository.getGroups().find((g) => g.id === data.groupId);
+    const authUser = useAuthStore.getState().user;
+    const currentProfile = useAppStore.getState().userProfile;
+    const currentUserId = authUser?.id || (currentProfile.id !== 'user_spendz' ? currentProfile.id : null);
+
     const friends = useFriendStore.getState().friends;
     const friendMap = new Map(friends.map((f) => [f.id, f]));
+
+    let fromMemberId = data.fromMemberId || null;
+    let fromUserId = data.fromUserId || null;
+    let fromFriendId = data.fromFriendId !== undefined ? data.fromFriendId : null;
+
+    let toMemberId = data.toMemberId || null;
+    let toUserId = data.toUserId || null;
+    let toFriendId = data.toFriendId !== undefined ? data.toFriendId : null;
+
+    if (group?.members) {
+      if (fromFriendId === null && !fromMemberId) {
+        const meM = group.members.find((m) => (currentUserId && m.userId === currentUserId) || m.friendId === null);
+        if (meM) {
+          fromMemberId = meM.id;
+          fromUserId = meM.userId || currentUserId || null;
+        }
+      } else if (fromFriendId && !fromMemberId) {
+        const mObj = group.members.find((m) => m.friendId === fromFriendId || m.id === fromFriendId);
+        if (mObj) {
+          fromMemberId = mObj.id;
+          fromUserId = mObj.userId || null;
+        }
+      }
+
+      if (toFriendId === null && !toMemberId) {
+        const meM = group.members.find((m) => (currentUserId && m.userId === currentUserId) || m.friendId === null);
+        if (meM) {
+          toMemberId = meM.id;
+          toUserId = meM.userId || currentUserId || null;
+        }
+      } else if (toFriendId && !toMemberId) {
+        const mObj = group.members.find((m) => m.friendId === toFriendId || m.id === toFriendId);
+        if (mObj) {
+          toMemberId = mObj.id;
+          toUserId = mObj.userId || null;
+        }
+      }
+    }
 
     const newSettlement: GroupSettlement = {
       id: settlementId,
       groupId: data.groupId,
-      fromFriendId: data.fromFriendId,
-      toFriendId: data.toFriendId,
+      fromFriendId,
+      fromMemberId,
+      fromUserId,
+      toFriendId,
+      toMemberId,
+      toUserId,
       amount,
       date,
       createdAt: now,
-      fromFriend: data.fromFriendId ? friendMap.get(data.fromFriendId) || null : null,
-      toFriend: data.toFriendId ? friendMap.get(data.toFriendId) || null : null,
+      fromFriend: fromFriendId ? friendMap.get(fromFriendId) || null : null,
+      toFriend: toFriendId ? friendMap.get(toFriendId) || null : null,
     };
 
     repository.addGroupSettlement(newSettlement);
     repository.updateGroup(data.groupId, { updatedAt: now });
+
+    if (authUser?.id) {
+      SupabaseQueries.createGroupSettlementInSupabase(newSettlement).catch((err) => {
+        console.warn('[GROUP STORE] Failed to sync settlement to Supabase:', err);
+      });
+    }
 
     set((state) => ({
       groupSettlements: [newSettlement, ...state.groupSettlements.filter((s) => s.id !== settlementId)],
@@ -657,6 +1039,12 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
     if (target?.groupId) {
       repository.updateGroup(target.groupId, { updatedAt: now });
+      const authUser = useAuthStore.getState().user;
+      if (authUser?.id) {
+        SupabaseQueries.deleteGroupSettlementInSupabase(settlementId).catch((err) => {
+          console.warn('[GROUP STORE] Failed to delete settlement in Supabase:', err);
+        });
+      }
     }
 
     set((state) => ({
@@ -699,14 +1087,20 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     const { groupExpenses, groupSettlements } = get();
     const expenses = groupExpenses.filter((e) => e.groupId === groupId);
     const settlements = groupSettlements.filter((s) => s.groupId === groupId);
-    return calculateGroupSummary(expenses, settlements).netBalance;
+    const authUser = useAuthStore.getState().user;
+    const currentProfile = useAppStore.getState().userProfile;
+    const currentUserId = authUser?.id || (currentProfile.id !== 'user_spendz' ? currentProfile.id : null);
+    return calculateGroupSummary(expenses, settlements, currentUserId).netBalance;
   },
 
   getGroupSummary: (groupId) => {
     const { groupExpenses, groupSettlements } = get();
     const expenses = groupExpenses.filter((e) => e.groupId === groupId);
     const settlements = groupSettlements.filter((s) => s.groupId === groupId);
-    return calculateGroupSummary(expenses, settlements);
+    const authUser = useAuthStore.getState().user;
+    const currentProfile = useAppStore.getState().userProfile;
+    const currentUserId = authUser?.id || (currentProfile.id !== 'user_spendz' ? currentProfile.id : null);
+    return calculateGroupSummary(expenses, settlements, currentUserId);
   },
 
   // ─── Group Invites & Joining ──────────────────────────────────────────
@@ -1031,7 +1425,8 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       }
     });
 
-    get().refreshGroupMembers(invite.groupId);
+    // Hydrate complete shared dataset (members, expenses, settlements) from Supabase immediately on joining
+    await get().loadGroupFromSupabase(invite.groupId);
     const updatedGroup = get().getGroupById(invite.groupId) || group;
     const storeHasGroup = Boolean(get().groups.some((g) => g.id === invite!.groupId));
     console.log('[GROUP JOIN] 11. Zustand update complete, group in store:', storeHasGroup);
