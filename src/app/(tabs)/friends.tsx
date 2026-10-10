@@ -8,9 +8,18 @@ import {
   TouchableOpacity,
   Image,
   RefreshControl,
+  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  runOnJS,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Search, X, Bell, Plus, QrCode } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useTheme';
 import { useBottomTabInset } from '@/hooks/useBottomTabInset';
@@ -28,11 +37,136 @@ import { spacing, borderRadius, shadows } from '@/theme/spacing';
 
 export default function FriendsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ tab?: string }>();
   const { colors } = useTheme();
   const bottomTabInset = useBottomTabInset(spacing.lg);
   const userProfile = useAppStore((s) => s.userProfile);
 
-  const [activeTab, setActiveTab] = useState<'friends' | 'groups'>('friends');
+  const { width: windowWidth } = useWindowDimensions();
+  const [containerWidth, setContainerWidth] = useState(() => windowWidth || Dimensions.get('window').width);
+
+  const initialTab = params?.tab === 'groups' ? 'groups' : 'friends';
+  const [activeTab, setActiveTab] = useState<'friends' | 'groups'>(initialTab);
+
+  const initialOffsetX = initialTab === 'groups' ? -containerWidth : 0;
+  const translateX = useSharedValue(initialOffsetX);
+  const startX = useSharedValue(initialOffsetX);
+  const activeTabShared = useSharedValue(initialTab === 'friends' ? 0 : 1);
+
+  // Sync width when window resized or measured
+  useEffect(() => {
+    if (windowWidth > 0 && Math.abs(windowWidth - containerWidth) > 1) {
+      setContainerWidth(windowWidth);
+      const targetX = activeTabShared.value === 0 ? 0 : -windowWidth;
+      translateX.value = targetX;
+    }
+  }, [windowWidth, containerWidth, activeTabShared, translateX]);
+
+  const updateActiveTabFromJS = useCallback((newTab: 'friends' | 'groups') => {
+    setActiveTab(newTab);
+  }, []);
+
+  const goToTab = useCallback(
+    (targetTab: 'friends' | 'groups', animated = true) => {
+      const target = targetTab === 'friends' ? 0 : -containerWidth;
+      activeTabShared.value = targetTab === 'friends' ? 0 : 1;
+      setActiveTab(targetTab);
+
+      if (animated) {
+        translateX.value = withSpring(target, {
+          damping: 24,
+          stiffness: 220,
+          mass: 0.8,
+        });
+      } else {
+        translateX.value = target;
+      }
+    },
+    [containerWidth, activeTabShared, translateX]
+  );
+
+  // Synchronize with route params
+  useEffect(() => {
+    if (params?.tab === 'groups' && activeTab !== 'groups') {
+      goToTab('groups', true);
+    } else if (params?.tab === 'friends' && activeTab !== 'friends') {
+      goToTab('friends', true);
+    }
+  }, [params?.tab, goToTab, activeTab]);
+
+  const panGesture = useMemo(() => {
+    return Gesture.Pan()
+      .activeOffsetX([-15, 15])
+      .failOffsetY([-12, 12])
+      .onStart(() => {
+        startX.value = translateX.value;
+      })
+      .onUpdate((event) => {
+        const raw = startX.value + event.translationX;
+        if (activeTabShared.value === 0) {
+          // On friends: allow swipe left. If dragging right, apply rubberband resistance
+          if (raw > 0) {
+            translateX.value = raw * 0.15;
+          } else {
+            translateX.value = Math.max(-containerWidth, raw);
+          }
+        } else {
+          // On groups: allow swipe right. If dragging left, apply rubberband resistance
+          if (raw < -containerWidth) {
+            translateX.value = -containerWidth + (raw + containerWidth) * 0.15;
+          } else {
+            translateX.value = Math.min(0, raw);
+          }
+        }
+      })
+      .onEnd((event) => {
+        const dx = event.translationX;
+        const vx = event.velocityX;
+        const swipeThreshold = containerWidth * 0.22;
+        const velocityThreshold = 400; // px/s
+
+        let target = 0;
+        let nextTab: 'friends' | 'groups' = 'friends';
+
+        if (activeTabShared.value === 0) {
+          if (dx < -swipeThreshold || vx < -velocityThreshold) {
+            target = -containerWidth;
+            nextTab = 'groups';
+          } else {
+            target = 0;
+            nextTab = 'friends';
+          }
+        } else {
+          if (dx > swipeThreshold || vx > velocityThreshold) {
+            target = 0;
+            nextTab = 'friends';
+          } else {
+            target = -containerWidth;
+            nextTab = 'groups';
+          }
+        }
+
+        translateX.value = withSpring(
+          target,
+          {
+            damping: 24,
+            stiffness: 220,
+            mass: 0.8,
+            velocity: vx,
+          },
+          (finished) => {
+            if (finished) {
+              activeTabShared.value = nextTab === 'friends' ? 0 : 1;
+              runOnJS(updateActiveTabFromJS)(nextTab);
+            }
+          }
+        );
+      });
+  }, [containerWidth, activeTabShared, translateX, startX, updateActiveTabFromJS]);
+
+  const animatedTrackStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
 
   // Friends store selectors
   const friends = useFriendStore((s) => s.friends);
@@ -45,7 +179,6 @@ export default function FriendsScreen() {
   const groupSettlements = useGroupStore((s) => s.groupSettlements);
   const getGroupBalanceForMe = useGroupStore((s) => s.getGroupBalanceForMe);
 
-  const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
 
   const reloadAll = useCallback(() => {
@@ -54,23 +187,12 @@ export default function FriendsScreen() {
     useSplitStore.getState().loadSplitExpenses();
   }, []);
 
-  // Reload persisted stores on focus (both tab focus & parent stack pop focus)
+  // Reload persisted stores on screen focus (canonical focus hook only)
   useFocusEffect(
     useCallback(() => {
       reloadAll();
     }, [reloadAll])
   );
-
-  useEffect(() => {
-    const unsub1 = navigation.addListener('focus', reloadAll);
-    const parentNav = navigation.getParent();
-    const unsub2 = parentNav?.addListener('focus', reloadAll);
-
-    return () => {
-      unsub1();
-      unsub2?.();
-    };
-  }, [navigation, reloadAll]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -78,7 +200,8 @@ export default function FriendsScreen() {
     setRefreshing(false);
   }, [reloadAll]);
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [friendSearchQuery, setFriendSearchQuery] = useState('');
+  const [groupSearchQuery, setGroupSearchQuery] = useState('');
 
   // 1. Calculate friend balances and total summary
   const { friendBalanceMap, totalYouOwe, totalOwedToYou, allBreakdown } =
@@ -112,7 +235,7 @@ export default function FriendsScreen() {
 
   // 2. Filter & sort friends deterministically
   const sortedFilteredFriends = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = friendSearchQuery.trim().toLowerCase();
     const filtered = friends.filter((f) => {
       if (!query) return true;
       const nameMatch = f.name.toLowerCase().includes(query);
@@ -142,22 +265,14 @@ export default function FriendsScreen() {
       // 3. Settled friends sorted alphabetically by name
       return a.name.localeCompare(b.name);
     });
-  }, [friends, searchQuery, friendBalanceMap]);
+  }, [friends, friendSearchQuery, friendBalanceMap]);
 
-  // 3. Group balances and filtering
-  const { groupBalanceMap } = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const g of groups) {
-      map.set(g.id, getGroupBalanceForMe(g.id));
-    }
-    return { groupBalanceMap: map };
-  }, [groups, groupExpenses, groupSettlements, getGroupBalanceForMe]);
-
+  // 3. Filter groups
   const filteredGroups = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = groupSearchQuery.trim().toLowerCase();
     if (!query) return groups;
     return groups.filter((g) => g.name.toLowerCase().includes(query));
-  }, [groups, searchQuery]);
+  }, [groups, groupSearchQuery]);
 
   return (
     <SafeAreaView
@@ -218,8 +333,7 @@ export default function FriendsScreen() {
       >
         <TouchableOpacity
           onPress={() => {
-            setActiveTab('friends');
-            setSearchQuery('');
+            goToTab('friends', true);
           }}
           activeOpacity={0.8}
           style={[
@@ -245,8 +359,7 @@ export default function FriendsScreen() {
 
         <TouchableOpacity
           onPress={() => {
-            setActiveTab('groups');
-            setSearchQuery('');
+            goToTab('groups', true);
           }}
           activeOpacity={0.8}
           style={[
@@ -271,179 +384,53 @@ export default function FriendsScreen() {
         </TouchableOpacity>
       </View>
 
-      {activeTab === 'friends' ? (
-        <>
-          {/* 2. Friends Title Row with Count Pill and Add Friend button */}
-          <View style={styles.titleRow}>
-
-        <View style={styles.titleWithCount}>
-          <Text style={[styles.pageTitle, { color: colors.textPrimary }]}>
-            Friends
-          </Text>
-          <View
+      {/* Horizontal Pager Container */}
+      <GestureDetector gesture={panGesture}>
+        <View
+          style={styles.pagerContainer}
+          onLayout={(e) => {
+            const w = e.nativeEvent.layout.width;
+            if (w > 0 && Math.abs(w - containerWidth) > 1) {
+              setContainerWidth(w);
+              const targetX = activeTabShared.value === 0 ? 0 : -w;
+              translateX.value = targetX;
+            }
+          }}
+        >
+          <Animated.View
             style={[
-              styles.countPill,
+              styles.pagerTrack,
               {
-                backgroundColor: colors.surfaceElevated,
-                borderColor: colors.border,
+                width: containerWidth * 2,
               },
+              animatedTrackStyle,
             ]}
           >
-            <Text style={[styles.countText, { color: colors.textSecondary }]}>
-              {friends.length} {friends.length === 1 ? 'friend' : 'friends'}
-            </Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => router.push('/friends/add' as any)}
-          activeOpacity={0.7}
-          style={[
-            styles.addFriendBtn,
-            {
-              backgroundColor: colors.accentLight,
-              borderColor: colors.accent,
-            },
-          ]}
-        >
-          <Plus size={15} color={colors.accent} strokeWidth={2.4} />
-          <Text style={[styles.addFriendText, { color: colors.textPrimary }]}>
-            Add Friend
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* 3. Search Bar (Matching Activity Search Bar) */}
-      <View
-        style={[
-          styles.searchContainer,
-          {
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-          },
-          shadows.sm,
-        ]}
-      >
-        <Search size={18} color={colors.textTertiary} />
-        <TextInput
-          placeholder="Search friends..."
-          placeholderTextColor={colors.textTertiary}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={[styles.searchInput, { color: colors.textPrimary }]}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <X size={18} color={colors.textTertiary} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* 4. Friends Content ScrollView */}
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: bottomTabInset },
-        ]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
-          />
-        }
-      >
-        {/* Overall Balance Summary Card (only if friends exist) */}
-        {friends.length > 0 && (
-          <BalanceSummary
-            totalYouOwe={totalYouOwe}
-            totalOwedToYou={totalOwedToYou}
-            breakdown={allBreakdown}
-          />
-        )}
-
-        {/* Section Header */}
-        {friends.length > 0 && (
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-              ALL FRIENDS
-            </Text>
-          </View>
-        )}
-
-        {/* Friend List / Empty State */}
-        {friends.length === 0 ? (
-          <EmptyState
-            title="No friends yet"
-            description="Add friends to split expenses and keep track of who owes whom."
-            actionLabel="+ Add Friend"
-            onAction={() => router.push('/friends/add' as any)}
-          />
-        ) : sortedFilteredFriends.length === 0 ? (
-          <EmptyState
-            title="No friends found"
-            description="Try another name."
-          />
-        ) : (
-          sortedFilteredFriends.map((friend) => {
-            const bal = friendBalanceMap.get(friend.id) || 0;
-            return (
-              <FriendCard
-                key={friend.id}
-                friend={friend}
-                balance={bal}
-                onPress={() => router.push(`/friends/${friend.id}` as any)}
-              />
-            );
-          })
-        )}
-      </ScrollView>
-        </>
-      ) : (
-        <>
-          {/* Groups Title Row with Count Pill and New Group button */}
-          <View style={styles.titleRow}>
-            <View style={styles.titleWithCount}>
-              <Text style={[styles.pageTitle, { color: colors.textPrimary }]}>
-                Groups
-              </Text>
-              <View
-                style={[
-                  styles.countPill,
-                  {
-                    backgroundColor: colors.surfaceElevated,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <Text style={[styles.countText, { color: colors.textSecondary }]}>
-                  {groups.length} {groups.length === 1 ? 'group' : 'groups'}
+          {/* Page 0: Friends */}
+          <View style={[styles.page, { width: containerWidth }]}>
+            {/* Friends Title Row with Count Pill and Add Friend button */}
+            <View style={styles.titleRow}>
+              <View style={styles.titleWithCount}>
+                <Text style={[styles.pageTitle, { color: colors.textPrimary }]}>
+                  Friends
                 </Text>
+                <View
+                  style={[
+                    styles.countPill,
+                    {
+                      backgroundColor: colors.surfaceElevated,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.countText, { color: colors.textSecondary }]}>
+                    {friends.length} {friends.length === 1 ? 'friend' : 'friends'}
+                  </Text>
+                </View>
               </View>
-            </View>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <TouchableOpacity
-                onPress={() => router.push('/groups/join' as any)}
-                activeOpacity={0.7}
-                style={[
-                  styles.addFriendBtn,
-                  {
-                    backgroundColor: colors.surfaceElevated,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <QrCode size={13} color={colors.textPrimary} strokeWidth={2.2} />
-                <Text style={[styles.addFriendText, { color: colors.textPrimary }]}>
-                  Join
-                </Text>
-              </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => router.push('/groups/create' as any)}
+                onPress={() => router.push('/friends/add' as any)}
                 activeOpacity={0.7}
                 style={[
                   styles.addFriendBtn,
@@ -455,92 +442,257 @@ export default function FriendsScreen() {
               >
                 <Plus size={15} color={colors.accent} strokeWidth={2.4} />
                 <Text style={[styles.addFriendText, { color: colors.textPrimary }]}>
-                  New Group
+                  Add Friend
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Friends Search Bar */}
+            <View
+              style={[
+                styles.searchContainer,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                },
+                shadows.sm,
+              ]}
+            >
+              <Search size={18} color={colors.textTertiary} />
+              <TextInput
+                placeholder="Search friends..."
+                placeholderTextColor={colors.textTertiary}
+                value={friendSearchQuery}
+                onChangeText={setFriendSearchQuery}
+                style={[styles.searchInput, { color: colors.textPrimary }]}
+              />
+              {friendSearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setFriendSearchQuery('')}>
+                  <X size={18} color={colors.textTertiary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Friends Content ScrollView */}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled={true}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={[
+                styles.scrollContent,
+                { paddingBottom: bottomTabInset },
+              ]}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={colors.accent}
+                  colors={[colors.accent]}
+                />
+              }
+            >
+              {/* Overall Balance Summary Card (only if friends exist) */}
+              {friends.length > 0 && (
+                <BalanceSummary
+                  totalYouOwe={totalYouOwe}
+                  totalOwedToYou={totalOwedToYou}
+                  breakdown={allBreakdown}
+                />
+              )}
+
+              {/* Section Header */}
+              {friends.length > 0 && (
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+                    ALL FRIENDS
+                  </Text>
+                </View>
+              )}
+
+              {/* Friend List / Empty State */}
+              {friends.length === 0 ? (
+                <EmptyState
+                  title="No friends yet"
+                  description="Add friends to split expenses and keep track of who owes whom."
+                  actionLabel="+ Add Friend"
+                  onAction={() => router.push('/friends/add' as any)}
+                />
+              ) : sortedFilteredFriends.length === 0 ? (
+                <EmptyState
+                  title="No friends found"
+                  description="Try another name."
+                />
+              ) : (
+                sortedFilteredFriends.map((friend) => {
+                  const bal = friendBalanceMap.get(friend.id) || 0;
+                  return (
+                    <FriendCard
+                      key={friend.id}
+                      friend={friend}
+                      balance={bal}
+                      onPress={() => router.push(`/friends/${friend.id}` as any)}
+                    />
+                  );
+                })
+              )}
+            </ScrollView>
           </View>
 
-          {/* Groups Search Bar */}
-          <View
-            style={[
-              styles.searchContainer,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-              },
-              shadows.sm,
-            ]}
-          >
-            <Search size={18} color={colors.textTertiary} />
-            <TextInput
-              placeholder="Search groups..."
-              placeholderTextColor={colors.textTertiary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              style={[styles.searchInput, { color: colors.textPrimary }]}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <X size={18} color={colors.textTertiary} />
-              </TouchableOpacity>
-            )}
-          </View>
+          {/* Page 1: Groups */}
+          <View style={[styles.page, { width: containerWidth }]}>
+            {/* Groups Title Row with Count Pill, Join and New Group button */}
+            <View style={styles.titleRow}>
+              <View style={styles.titleWithCount}>
+                <Text style={[styles.pageTitle, { color: colors.textPrimary }]}>
+                  Groups
+                </Text>
+                <View
+                  style={[
+                    styles.countPill,
+                    {
+                      backgroundColor: colors.surfaceElevated,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.countText, { color: colors.textSecondary }]}>
+                    {groups.length} {groups.length === 1 ? 'group' : 'groups'}
+                  </Text>
+                </View>
+              </View>
 
-          {/* Groups Content ScrollView */}
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingBottom: bottomTabInset },
-            ]}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={colors.accent}
-                colors={[colors.accent]}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <TouchableOpacity
+                  onPress={() => router.push('/groups/join' as any)}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.addFriendBtn,
+                    {
+                      backgroundColor: colors.surfaceElevated,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <QrCode size={13} color={colors.textPrimary} strokeWidth={2.2} />
+                  <Text style={[styles.addFriendText, { color: colors.textPrimary }]}>
+                    Join
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => router.push('/groups/create' as any)}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.addFriendBtn,
+                    {
+                      backgroundColor: colors.accentLight,
+                      borderColor: colors.accent,
+                    },
+                  ]}
+                >
+                  <Plus size={15} color={colors.accent} strokeWidth={2.4} />
+                  <Text style={[styles.addFriendText, { color: colors.textPrimary }]}>
+                    New Group
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Groups Search Bar */}
+            <View
+              style={[
+                styles.searchContainer,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                },
+                shadows.sm,
+              ]}
+            >
+              <Search size={18} color={colors.textTertiary} />
+              <TextInput
+                placeholder="Search groups..."
+                placeholderTextColor={colors.textTertiary}
+                value={groupSearchQuery}
+                onChangeText={setGroupSearchQuery}
+                style={[styles.searchInput, { color: colors.textPrimary }]}
               />
-            }
-          >
-            {groups.length === 0 ? (
-              <EmptyState
-                title="No groups yet"
-                description="Create a group to split expenses with multiple friends for trips, dinners, and events."
-                actionLabel="+ New Group"
-                onAction={() => router.push('/groups/create' as any)}
-              />
-            ) : filteredGroups.length === 0 ? (
-              <EmptyState
-                title="No groups found"
-                description={`No groups matching "${searchQuery}"`}
-                actionLabel="Clear Search"
-                onAction={() => setSearchQuery('')}
-              />
-            ) : (
-              filteredGroups.map((group) => {
-                const balance = getGroupBalanceForMe(group.id);
-                const memberCount = group.members?.length || 1;
-                return (
-                  <GroupCard
-                    key={`${group.id}-${balance}-${group.updatedAt}`}
-                    group={group}
-                    balance={balance}
-                    memberCount={memberCount}
-                    onPress={() => router.push(`/groups/${group.id}` as any)}
-                  />
-                );
-              })
-            )}
-          </ScrollView>
-        </>
-      )}
-    </SafeAreaView>
+              {groupSearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setGroupSearchQuery('')}>
+                  <X size={18} color={colors.textTertiary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Groups Content ScrollView */}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled={true}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={[
+                styles.scrollContent,
+                { paddingBottom: bottomTabInset },
+              ]}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={colors.accent}
+                  colors={[colors.accent]}
+                />
+              }
+            >
+              {groups.length === 0 ? (
+                <EmptyState
+                  title="No groups yet"
+                  description="Create a group to split expenses with multiple friends for trips, dinners, and events."
+                  actionLabel="+ New Group"
+                  onAction={() => router.push('/groups/create' as any)}
+                />
+              ) : filteredGroups.length === 0 ? (
+                <EmptyState
+                  title="No groups found"
+                  description={`No groups matching "${groupSearchQuery}"`}
+                  actionLabel="Clear Search"
+                  onAction={() => setGroupSearchQuery('')}
+                />
+              ) : (
+                filteredGroups.map((group) => {
+                  const balance = getGroupBalanceForMe(group.id);
+                  const memberCount = group.members?.length || 1;
+                  return (
+                    <GroupCard
+                      key={`${group.id}-${balance}-${group.updatedAt}`}
+                      group={group}
+                      balance={balance}
+                      memberCount={memberCount}
+                      onPress={() => router.push(`/groups/${group.id}` as any)}
+                    />
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </Animated.View>
+      </View>
+    </GestureDetector>
+  </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  pagerContainer: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  pagerTrack: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  page: {
     flex: 1,
   },
   header: {
