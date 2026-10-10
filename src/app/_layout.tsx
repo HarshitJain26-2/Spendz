@@ -11,6 +11,7 @@ import {
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { initializeDatabase, seedDefaultCategories } from '@/database';
 import { useAppStore } from '@/store/appStore';
 import { useAccountStore } from '@/store/accountStore';
@@ -168,97 +169,99 @@ export default function RootLayout() {
   }, [isLoading, initStatus, isAuthenticated, router]);
 
   return (
-    <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
-      <NavigationProtection />
-      <Stack
-        initialRouteName="index"
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: themeColors.background },
-          animation: 'slide_from_right',
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="auth" />
-        <Stack.Screen name="onboarding" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen
-          name="add"
-          options={{
-            presentation: 'modal',
-            animation: 'slide_from_bottom',
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider style={{ flex: 1, backgroundColor: themeColors.background }}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <NavigationProtection />
+        <Stack
+          initialRouteName="index"
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: themeColors.background },
+            animation: 'slide_from_right',
           }}
-        />
-        <Stack.Screen name="transaction" />
-        <Stack.Screen name="friends" />
-        <Stack.Screen name="groups" />
-        <Stack.Screen name="group-invite" />
-        <Stack.Screen name="insights" />
-        <Stack.Screen name="settings" />
-        <Stack.Screen name="reports" />
-        <Stack.Screen name="profile" />
-      </Stack>
-
-
-      {/* Error Overlay with Retry */}
-      {initStatus === 'error' && (
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            styles.centerContainer,
-            { backgroundColor: themeColors.background, zIndex: 999 },
-          ]}
         >
-          <Text style={[styles.errorTitle, { color: themeColors.expense }]}>
-            Spendz
-          </Text>
-          <Text style={[styles.errorSubtitle, { color: themeColors.textPrimary }]}>
-            Something went wrong while loading your data.
-          </Text>
-          {initError && (
-            <Text style={[styles.errorDetails, { color: themeColors.textSecondary }]}>
-              {initError}
-            </Text>
-          )}
-          <TouchableOpacity
-            onPress={prepare}
-            style={[styles.retryButton, { backgroundColor: themeColors.accent }]}
-            activeOpacity={0.8}
+          <Stack.Screen name="index" />
+          <Stack.Screen name="auth" />
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen
+            name="add"
+            options={{
+              presentation: 'modal',
+              animation: 'slide_from_bottom',
+            }}
+          />
+          <Stack.Screen name="transaction" />
+          <Stack.Screen name="friends" />
+          <Stack.Screen name="groups" />
+          <Stack.Screen name="group-invite" />
+          <Stack.Screen name="insights" />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="reports" />
+          <Stack.Screen name="profile" />
+        </Stack>
+
+
+        {/* Error Overlay with Retry */}
+        {initStatus === 'error' && (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              styles.centerContainer,
+              { backgroundColor: themeColors.background, zIndex: 999 },
+            ]}
           >
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+            <Text style={[styles.errorTitle, { color: themeColors.expense }]}>
+              Spendz
+            </Text>
+            <Text style={[styles.errorSubtitle, { color: themeColors.textPrimary }]}>
+              Something went wrong while loading your data.
+            </Text>
+            {initError && (
+              <Text style={[styles.errorDetails, { color: themeColors.textSecondary }]}>
+                {initError}
+              </Text>
+            )}
+            <TouchableOpacity
+              onPress={prepare}
+              style={[styles.retryButton, { backgroundColor: themeColors.accent }]}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-      {/* Initializing / Loading Overlay */}
-      {isLoading && initStatus !== 'error' && (
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            styles.centerContainer,
-            { backgroundColor: themeColors.background, zIndex: 999 },
-          ]}
-        >
-          <Image
-            source={require('@/assets/images/spendz-logo.png')}
-            style={styles.loadingLogo}
-            resizeMode="contain"
-          />
-          <Text style={[styles.brandTitle, { color: themeColors.textPrimary }]}>
-            Spendz
-          </Text>
-          <Text style={[styles.brandSubtitle, { color: themeColors.textSecondary }]}>
-            Checking session & preparing data...
-          </Text>
-          <ActivityIndicator
-            size="small"
-            color={themeColors.accent}
-            style={styles.spinner}
-          />
-        </View>
-      )}
-    </SafeAreaProvider>
+        {/* Initializing / Loading Overlay */}
+        {isLoading && initStatus !== 'error' && (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              styles.centerContainer,
+              { backgroundColor: themeColors.background, zIndex: 999 },
+            ]}
+          >
+            <Image
+              source={require('@/assets/images/spendz-logo.png')}
+              style={styles.loadingLogo}
+              resizeMode="contain"
+            />
+            <Text style={[styles.brandTitle, { color: themeColors.textPrimary }]}>
+              Spendz
+            </Text>
+            <Text style={[styles.brandSubtitle, { color: themeColors.textSecondary }]}>
+              Checking session & preparing data...
+            </Text>
+            <ActivityIndicator
+              size="small"
+              color={themeColors.accent}
+              style={styles.spinner}
+            />
+          </View>
+        )}
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
