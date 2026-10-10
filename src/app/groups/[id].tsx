@@ -81,7 +81,7 @@ export default function GroupDetailScreen() {
   const onRefresh = useCallback(async () => {
     if (!id) return;
     setRefreshing(true);
-    await useGroupStore.getState().loadGroupFromSupabase(id);
+    await useGroupStore.getState().loadGroupFromSupabase(id, true);
     setRefreshing(false);
   }, [id]);
 

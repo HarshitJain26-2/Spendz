@@ -34,7 +34,7 @@ interface GroupState {
   isLoading: boolean;
 
   loadGroups: () => void;
-  loadGroupFromSupabase: (groupId: string) => Promise<Group | null>;
+  loadGroupFromSupabase: (groupId: string, force?: boolean) => Promise<Group | null>;
   subscribeToGroupRealtime: (groupId: string) => () => void;
   addGroup: (data: { name: string; icon?: string; memberFriendIds: string[] }) => Group;
   updateGroup: (id: string, data: { name?: string; icon?: string }) => void;
@@ -353,7 +353,12 @@ export function calculateGroupMemberBalances(
 }
 
 let isSyncingUserGroups = false;
+let lastUserGroupsSyncTime = 0;
 const inFlightHydrations = new Map<string, Promise<any>>();
+const lastGroupHydrationTime = new Map<string, number>();
+
+const USER_GROUPS_SYNC_COOLDOWN_MS = 20_000; // 20s cooldown between auto background user group list syncs
+const GROUP_HYDRATION_COOLDOWN_MS = 15_000; // 15s cooldown between automatic full group hydrations
 
 export const useGroupStore = create<GroupState>((set, get) => ({
   groups: [],
@@ -371,9 +376,11 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       console.error('Failed to load groups data:', e);
     }
 
-    // In background, sync user's groups from Supabase safely
-    if (isSupabaseConfigured() && !isSyncingUserGroups) {
+    // In background, sync user's groups from Supabase safely with cooldown
+    const now = Date.now();
+    if (isSupabaseConfigured() && !isSyncingUserGroups && (now - lastUserGroupsSyncTime > USER_GROUPS_SYNC_COOLDOWN_MS)) {
       isSyncingUserGroups = true;
+      lastUserGroupsSyncTime = now;
       (async () => {
         try {
           const remoteGroups = await SupabaseQueries.getUserGroups();
@@ -389,15 +396,22 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     }
   },
 
-  loadGroupFromSupabase: async (groupId: string) => {
+  loadGroupFromSupabase: async (groupId: string, force = false) => {
     if (!groupId) return null;
     if (inFlightHydrations.has(groupId)) {
       return inFlightHydrations.get(groupId);
     }
 
+    const now = Date.now();
+    const lastHydrated = lastGroupHydrationTime.get(groupId) || 0;
+    if (!force && (now - lastHydrated < GROUP_HYDRATION_COOLDOWN_MS)) {
+      return get().getGroupById(groupId) || null;
+    }
+
     const hydrationPromise = (async () => {
       try {
         console.log('[GROUP STORE] Hydrating group from Supabase:', groupId);
+        lastGroupHydrationTime.set(groupId, Date.now());
         const remoteData = await SupabaseQueries.getGroupDetails(groupId);
         if (!remoteData || !remoteData.group) {
           console.log('[GROUP STORE] No remote group found in Supabase for id:', groupId);
@@ -474,7 +488,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         console.log('[GROUP STORE REALTIME] Change detected for group', groupId, '- rehydrating...');
-        get().loadGroupFromSupabase(groupId);
+        get().loadGroupFromSupabase(groupId, true);
       }, 200);
     };
 
