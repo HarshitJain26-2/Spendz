@@ -426,6 +426,9 @@ export const useGroupStore = create<GroupState>((set, get) => ({
           for (const m of members) {
             repository.upsertGroupMember(m);
           }
+          if (remoteData.activeInvite) {
+            repository.createGroupInvite(remoteData.activeInvite);
+          }
           if (expenses !== null) {
             for (const exp of expenses) {
               repository.upsertGroupExpense(exp, exp.participants || []);
@@ -443,9 +446,14 @@ export const useGroupStore = create<GroupState>((set, get) => ({
         // 2. Hydrate Zustand in-memory state safely
         set((state) => {
           const groupExists = state.groups.some((g) => g.id === groupId);
+          const resolvedGroup = {
+            ...remoteGroup,
+            members,
+            activeInvite: remoteData.activeInvite || remoteGroup.activeInvite || null,
+          };
           const updatedGroups = groupExists
-            ? state.groups.map((g) => (g.id === groupId ? { ...remoteGroup, members } : g))
-            : [{ ...remoteGroup, members }, ...state.groups];
+            ? state.groups.map((g) => (g.id === groupId ? resolvedGroup : g))
+            : [resolvedGroup, ...state.groups];
 
           const updatedExpenses = expenses !== null
             ? [...expenses, ...state.groupExpenses.filter((e) => e.groupId !== groupId)]
@@ -1149,9 +1157,21 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       isActive: true,
     };
 
-    // 1. If authenticated, sync group + creator + invite to Supabase (shared backend source of truth)
+    // 1. If authenticated, query backend for existing active invite first (idempotent, no unnecessary writes/upserts)
     if (authUser?.id) {
-      console.log('[GROUP STORE] Syncing group invite to Supabase for group:', groupId);
+      try {
+        const existingRemoteInvite = await SupabaseQueries.getActiveInviteForGroup(groupId);
+        if (existingRemoteInvite) {
+          console.log('[GROUP STORE] Reusing existing active invite from Supabase:', existingRemoteInvite.code);
+          repository.createGroupInvite(existingRemoteInvite);
+          get().loadGroups();
+          return existingRemoteInvite;
+        }
+      } catch (checkErr) {
+        console.warn('[GROUP STORE] Failed to fetch active invite from Supabase:', checkErr);
+      }
+
+      console.log('[GROUP STORE] No active invite found on backend. Creating invite in Supabase for group:', groupId);
       const syncRes = await SupabaseQueries.syncGroupAndInviteToSupabase(group, creatorMember, newInviteTemplate);
       if (syncRes.success && syncRes.invite) {
         const remoteInvite: GroupInvite = syncRes.invite;
@@ -1159,8 +1179,12 @@ export const useGroupStore = create<GroupState>((set, get) => ({
         get().loadGroups();
         return remoteInvite;
       } else {
-        console.error('[GROUP STORE] Supabase sync failed:', syncRes.error);
-        throw new Error("Couldn't create the group invite. Please try again.");
+        console.error('[GROUP STORE] Supabase invite creation failed:', {
+          code: syncRes.code,
+          error: syncRes.error,
+          groupId,
+        });
+        throw new Error(syncRes.error || "Couldn't create the group invite. Please try again.");
       }
     }
 

@@ -468,11 +468,53 @@ export const SupabaseQueries = {
     };
   },
 
+  async getActiveInviteForGroup(groupId: string): Promise<any | null> {
+    if (!isSupabaseConfigured() || !groupId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('group_invites')
+        .select('*')
+        .eq('group_id', groupId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('[SUPABASE GROUP INVITE] Error fetching active invite:', {
+          code: error.code,
+          message: error.message,
+          groupId,
+        });
+        return null;
+      }
+      if (!data) return null;
+
+      // Expiration check
+      if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) {
+        return null;
+      }
+
+      return {
+        id: data.id,
+        groupId: data.group_id,
+        code: data.code,
+        createdBy: data.created_by,
+        createdAt: data.created_at,
+        expiresAt: data.expires_at,
+        isActive: data.is_active,
+      };
+    } catch (e: any) {
+      console.warn('[SUPABASE GROUP INVITE] Exception fetching active invite:', e?.message || e);
+      return null;
+    }
+  },
+
   async syncGroupAndInviteToSupabase(
     group: any,
     creatorMember: any,
     invite: any
-  ): Promise<{ success: boolean; invite?: any; error?: string }> {
+  ): Promise<{ success: boolean; invite?: any; error?: string; code?: string }> {
     if (!isSupabaseConfigured()) return { success: true, invite };
     try {
       const { data: authData } = await supabase.auth.getUser();
@@ -481,7 +523,18 @@ export const SupabaseQueries = {
         return { success: false, error: 'You must be signed in to share group invites.' };
       }
 
-      // Maintain stable ownership (Section 14): check if group exists in Supabase
+      // Step 1: FIRST check if an active, non-expired invite already exists in Supabase.
+      // If found, return it immediately without writing to groups or group_members.
+      const existingActive = await this.getActiveInviteForGroup(group.id);
+      if (existingActive) {
+        console.log('[SUPABASE GROUP SYNC] Active invite retrieved from Supabase:', existingActive.code);
+        return {
+          success: true,
+          invite: existingActive,
+        };
+      }
+
+      // Step 2: No active invite exists. Check if group exists in Supabase.
       const { data: existingGroup, error: checkError } = await supabase
         .from('groups')
         .select('id, created_by')
@@ -489,124 +542,112 @@ export const SupabaseQueries = {
         .maybeSingle();
 
       if (checkError) {
-        console.warn('[SUPABASE GROUP SYNC] Note on checking existing group:', checkError.message);
+        console.warn('[SUPABASE GROUP SYNC] Note on checking existing group:', {
+          code: checkError.code,
+          message: checkError.message,
+          groupId: group.id,
+        });
       }
 
-      // Preserve existing owner if already set; otherwise map to authenticated user
-      const ownerId = existingGroup?.created_by || authUser.id;
-
-      console.log('[SUPABASE GROUP SYNC]', {
-        'auth user': authUser.id,
-        'group id': group.id,
-        'created_by': ownerId,
-      });
-
-      // 1. Ensure group exists in Supabase
-      const { error: groupError } = await supabase.from('groups').upsert(
-        {
+      if (!existingGroup) {
+        // Group does not exist in Supabase yet. Current authenticated user is creating it.
+        console.log('[SUPABASE GROUP SYNC] Creating new group row in Supabase with created_by:', authUser.id);
+        const { error: groupError } = await supabase.from('groups').insert({
           id: group.id,
           name: group.name,
           icon: group.icon || '🏖',
-          created_by: ownerId,
+          created_by: authUser.id, // Strictly use authenticated user ID
           created_at: group.createdAt || new Date().toISOString(),
           updated_at: group.updatedAt || new Date().toISOString(),
-        },
-        { onConflict: 'id' }
-      );
+        });
 
-      if (groupError) {
-        console.error('[SUPABASE GROUP SYNC] Failed to upsert group:', groupError.message);
-        return { success: false, error: groupError.message };
-      }
+        if (groupError) {
+          console.error('[SUPABASE GROUP SYNC] Failed to insert group:', {
+            code: groupError.code,
+            message: groupError.message,
+            groupId: group.id,
+          });
+          return { success: false, error: groupError.message, code: groupError.code };
+        }
 
-      // 2. Ensure creator membership exists in Supabase
-      const { error: memberError } = await supabase.from('group_members').upsert(
-        {
+        // Add creator membership
+        const { error: memberError } = await supabase.from('group_members').insert({
           id: creatorMember.id,
           group_id: group.id,
           user_id: authUser.id,
-          name: creatorMember.name || null,
-          avatar_url: creatorMember.avatarUrl || null,
-          role: 'admin',
-          created_at: creatorMember.createdAt,
-        },
-        { onConflict: 'group_id, user_id' }
-      );
+          name: creatorMember.name || authUser.user_metadata?.full_name || authUser.user_metadata?.name || null,
+          avatar_url: creatorMember.avatarUrl || authUser.user_metadata?.avatar_url || null,
+          role: 'owner',
+          created_at: creatorMember.createdAt || new Date().toISOString(),
+        });
 
-      if (memberError) {
-        console.warn('[SUPABASE SYNC] Warning upserting creator member:', memberError.message);
+        if (memberError && memberError.code !== '23505') {
+          console.warn('[SUPABASE GROUP SYNC] Warning inserting creator member:', memberError.message, memberError.code);
+        }
+      } else {
+        // Group already exists in Supabase.
+        // DO NOT re-insert or upsert the group row to preserve original ownership and avoid RLS 42501 violations.
+        console.log('[SUPABASE GROUP SYNC] Group already exists. Preserving original owner:', existingGroup.created_by);
       }
 
-      // 3. Check if an active invite already exists for this group in Supabase
-      const { data: existingActive } = await supabase
-        .from('group_invites')
-        .select('*')
-        .eq('group_id', group.id)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (existingActive) {
-        console.log('[SUPABASE SYNC] Active invite already exists in Supabase:', existingActive.code);
-        return {
-          success: true,
-          invite: {
-            id: existingActive.id,
-            groupId: existingActive.group_id,
-            code: existingActive.code,
-            createdBy: existingActive.created_by,
-            createdAt: existingActive.created_at,
-            expiresAt: existingActive.expires_at,
-            isActive: existingActive.is_active,
-          },
-        };
-      }
-
-      // 4. Insert new invite into Supabase
+      // Step 3: Insert new invite into Supabase
       const normalizedCode = invite.code.trim().toUpperCase();
-      console.log('[SUPABASE SYNC] Inserting new invite into Supabase:', normalizedCode);
-      const { error: inviteError } = await supabase.from('group_invites').insert({
-        id: invite.id,
-        group_id: group.id,
-        code: normalizedCode,
-        created_by: authUser.id,
-        created_at: invite.createdAt,
-        expires_at: invite.expiresAt,
-        is_active: true,
-      });
+      console.log('[SUPABASE GROUP SYNC] Inserting new invite into Supabase:', normalizedCode);
+
+      const { data: insertedInvite, error: inviteError } = await supabase
+        .from('group_invites')
+        .insert({
+          id: invite.id,
+          group_id: group.id,
+          code: normalizedCode,
+          created_by: authUser.id,
+          created_at: invite.createdAt || new Date().toISOString(),
+          expires_at: invite.expiresAt || null,
+          is_active: true,
+        })
+        .select('*')
+        .maybeSingle();
 
       if (inviteError) {
-        console.error('[SUPABASE SYNC] Failed to insert invite in Supabase:', inviteError.message);
-        return { success: false, error: inviteError.message };
+        // If conflict (e.g. concurrent invite creation), attempt to fetch the active invite
+        if (inviteError.code === '23505') {
+          const fallbackInvite = await this.getActiveInviteForGroup(group.id);
+          if (fallbackInvite) {
+            return {
+              success: true,
+              invite: fallbackInvite,
+            };
+          }
+        }
+
+        console.error('[SUPABASE GROUP SYNC] Failed to insert invite in Supabase:', {
+          code: inviteError.code,
+          message: inviteError.message,
+          groupId: group.id,
+        });
+        return { success: false, error: inviteError.message, code: inviteError.code };
       }
 
-      // 5. Verify the invite exists in Supabase
-      const { data: verifiedInvite, error: verifyErr } = await supabase
-        .from('group_invites')
-        .select('*')
-        .eq('id', invite.id)
-        .maybeSingle();
-
-      if (verifyErr || !verifiedInvite) {
-        console.error('[SUPABASE SYNC] Failed to verify invite in Supabase:', verifyErr?.message);
-        return { success: false, error: 'Failed to verify invite in database.' };
-      }
-
-      console.log('[SUPABASE SYNC] Invite successfully verified in Supabase:', verifiedInvite.code);
+      const verified = insertedInvite || invite;
+      console.log('[SUPABASE GROUP SYNC] Invite created successfully in Supabase:', verified.code);
       return {
         success: true,
         invite: {
-          id: verifiedInvite.id,
-          groupId: verifiedInvite.group_id,
-          code: verifiedInvite.code,
-          createdBy: verifiedInvite.created_by,
-          createdAt: verifiedInvite.created_at,
-          expiresAt: verifiedInvite.expires_at,
-          isActive: verifiedInvite.is_active,
+          id: verified.id,
+          groupId: verified.group_id || verified.groupId,
+          code: verified.code,
+          createdBy: verified.created_by || verified.createdBy,
+          createdAt: verified.created_at || verified.createdAt,
+          expiresAt: verified.expires_at || verified.expiresAt,
+          isActive: verified.is_active !== undefined ? verified.is_active : verified.isActive,
         },
       };
     } catch (e: any) {
-      console.error('[SUPABASE SYNC] Exception syncing group/invite:', e?.message || e);
-      return { success: false, error: e?.message || 'Network error syncing invite to backend.' };
+      console.error('[SUPABASE GROUP SYNC] Exception syncing group/invite:', {
+        message: e?.message || e,
+        code: e?.code,
+      });
+      return { success: false, error: e?.message || 'Network error syncing invite to backend.', code: e?.code };
     }
   },
 
@@ -628,50 +669,51 @@ export const SupabaseQueries = {
         return { success: false, error: 'User not authenticated in Supabase' };
       }
 
-      // Preserve existing owner if already set; otherwise map to authenticated user
+      // Check if group already exists
       const { data: existingGroup } = await supabase
         .from('groups')
         .select('id, created_by')
         .eq('id', group.id)
         .maybeSingle();
 
-      const ownerId = existingGroup?.created_by || authUser.id;
+      if (existingGroup) {
+        console.log('[SUPABASE GROUP] Group already exists in Supabase. Preserving owner:', existingGroup.created_by);
+        return { success: true };
+      }
 
-      // Insert group
-      const { error: groupError } = await supabase.from('groups').upsert(
-        {
-          id: group.id,
-          name: group.name,
-          icon: group.icon,
-          created_by: ownerId,
-          created_at: group.createdAt,
-          updated_at: group.updatedAt,
-        },
-        { onConflict: 'id' }
-      );
+      // Insert group with authenticated user as created_by
+      const { error: groupError } = await supabase.from('groups').insert({
+        id: group.id,
+        name: group.name,
+        icon: group.icon || '🏖',
+        created_by: authUser.id,
+        created_at: group.createdAt || new Date().toISOString(),
+        updated_at: group.updatedAt || new Date().toISOString(),
+      });
 
       if (groupError) {
-        console.warn('[Supabase] Failed to upsert group:', groupError.message);
+        console.warn('[Supabase] Failed to insert group:', {
+          code: groupError.code,
+          message: groupError.message,
+          groupId: group.id,
+        });
         return { success: false, error: groupError.message };
       }
 
       // Insert creator membership
       for (const m of members) {
         if (m.userId === authUser.id || (!m.userId && m.friendId === null)) {
-          const { error: memberError } = await supabase.from('group_members').upsert(
-            {
-              id: m.id,
-              group_id: m.groupId,
-              user_id: authUser.id,
-              name: m.name || null,
-              avatar_url: m.avatarUrl || null,
-              role: m.role || 'admin',
-              created_at: m.createdAt,
-            },
-            { onConflict: 'group_id, user_id' }
-          );
-          if (memberError) {
-            console.warn('[Supabase] Failed to upsert creator member:', memberError.message);
+          const { error: memberError } = await supabase.from('group_members').insert({
+            id: m.id,
+            group_id: m.groupId || group.id,
+            user_id: authUser.id,
+            name: m.name || authUser.user_metadata?.full_name || authUser.user_metadata?.name || null,
+            avatar_url: m.avatarUrl || authUser.user_metadata?.avatar_url || null,
+            role: 'owner',
+            created_at: m.createdAt || new Date().toISOString(),
+          });
+          if (memberError && memberError.code !== '23505') {
+            console.warn('[Supabase] Warning inserting creator member:', memberError.message);
           }
         }
       }
@@ -812,6 +854,7 @@ export const SupabaseQueries = {
     members: any[];
     expenses: any[] | null;
     settlements: any[] | null;
+    activeInvite?: any | null;
   } | null> {
     if (!isSupabaseConfigured()) return null;
     try {
@@ -934,6 +977,9 @@ export const SupabaseQueries = {
         }
       }
 
+      // 6. Active Invite
+      const activeInvite = await this.getActiveInviteForGroup(groupId);
+
       return {
         group: {
           id: groupData.id,
@@ -942,10 +988,12 @@ export const SupabaseQueries = {
           createdAt: groupData.created_at,
           updatedAt: groupData.updated_at,
           members,
+          activeInvite,
         },
         members,
         expenses,
         settlements,
+        activeInvite,
       };
     } catch (e) {
       console.error('[SUPABASE GROUP] Exception in getGroupDetails:', e);
