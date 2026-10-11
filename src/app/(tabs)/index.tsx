@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from 'rea
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { Settings } from 'lucide-react-native';
+import { Bell } from 'lucide-react-native';
+import { showAlert } from '@/utils/alert';
 import { useTheme } from '@/hooks/useTheme';
 import { useBottomTabInset } from '@/hooks/useBottomTabInset';
 import { BalanceCard } from '@/components/home/BalanceCard';
@@ -106,14 +107,15 @@ export default function HomeScreen() {
 
         <View style={styles.headerRight}>
           <TouchableOpacity
-            onPress={() => router.push('/settings' as any)}
+            onPress={() => showAlert('Notifications', 'You have no new notifications right now.')}
             style={[
               styles.iconButton,
               { backgroundColor: colors.surface, borderColor: colors.border },
             ]}
             activeOpacity={0.7}
+            accessibilityLabel="Notifications"
           >
-            <Settings size={18} color={colors.textPrimary} />
+            <Bell size={18} color={colors.textPrimary} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.push('/profile' as any)}
