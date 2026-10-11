@@ -318,34 +318,6 @@ export default function ProfileTabScreen() {
             </View>
             <ChevronRight size={18} color={colors.textTertiary} />
           </TouchableOpacity>
-
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-          <TouchableOpacity
-            onPress={handleSignOut}
-            style={styles.menuRow}
-            activeOpacity={0.7}
-          >
-            <View style={styles.menuLeft}>
-              <View
-                style={[
-                  styles.iconContainer,
-                  { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
-                ]}
-              >
-                <LogOut size={18} color={colors.expense} strokeWidth={2} />
-              </View>
-              <View style={styles.menuTextGroup}>
-                <Text style={[styles.menuTitle, { color: colors.expense }]}>
-                  Sign Out
-                </Text>
-                <Text style={[styles.menuSub, { color: colors.textTertiary }]}>
-                  Sign out of your Spendz account
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={18} color={colors.textTertiary} />
-          </TouchableOpacity>
         </Card>
 
         {/* SECTION 2: Preferences & Management */}
@@ -563,6 +535,37 @@ export default function ProfileTabScreen() {
             </View>
           </View>
         </Card>
+
+        {/* SECTION 5: Account Session (Sign Out at last) */}
+        <View style={{ marginTop: spacing.lg, marginBottom: spacing.md }}>
+          <Card padding="none" style={styles.groupedCard}>
+            <TouchableOpacity
+              onPress={handleSignOut}
+              style={styles.menuRow}
+              activeOpacity={0.7}
+            >
+              <View style={styles.menuLeft}>
+                <View
+                  style={[
+                    styles.iconContainer,
+                    { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
+                  ]}
+                >
+                  <LogOut size={18} color={colors.expense} strokeWidth={2} />
+                </View>
+                <View style={styles.menuTextGroup}>
+                  <Text style={[styles.menuTitle, { color: colors.expense }]}>
+                    Sign Out
+                  </Text>
+                  <Text style={[styles.menuSub, { color: colors.textTertiary }]}>
+                    Sign out of your Spendz account
+                  </Text>
+                </View>
+              </View>
+              <ChevronRight size={18} color={colors.textTertiary} />
+            </TouchableOpacity>
+          </Card>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

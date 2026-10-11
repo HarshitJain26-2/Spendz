@@ -73,7 +73,7 @@ export interface DatabaseRepository {
   joinGroup(groupId: string, member: GroupMember, groupToInsert?: Group): { success: boolean; message?: string };
 
   // Group Invites
-  createGroupInvite(invite: GroupInvite): void;
+  createGroupInvite(invite: GroupInvite): GroupInvite;
   getInviteByCode(code: string): GroupInvite | null;
   getInvitesByGroupId(groupId: string): GroupInvite[];
   getActiveInviteByGroupId(groupId: string): GroupInvite | null;
@@ -100,6 +100,7 @@ export interface DatabaseRepository {
   // Group Sync / Upsert Helpers
   upsertGroup(group: Group): void;
   upsertGroupMember(member: GroupMember): void;
+  upsertGroupInvite(invite: GroupInvite): GroupInvite;
   upsertGroupExpense(
     expense: Omit<GroupExpense, 'participants'>,
     participants: GroupExpenseParticipant[]

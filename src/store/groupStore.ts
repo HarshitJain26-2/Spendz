@@ -356,6 +356,7 @@ let isSyncingUserGroups = false;
 let lastUserGroupsSyncTime = 0;
 const inFlightHydrations = new Map<string, Promise<any>>();
 const lastGroupHydrationTime = new Map<string, number>();
+const inFlightInvites = new Map<string, Promise<GroupInvite>>();
 
 const USER_GROUPS_SYNC_COOLDOWN_MS = 20_000; // 20s cooldown between auto background user group list syncs
 const GROUP_HYDRATION_COOLDOWN_MS = 15_000; // 15s cooldown between automatic full group hydrations
@@ -426,9 +427,19 @@ export const useGroupStore = create<GroupState>((set, get) => ({
           for (const m of members) {
             repository.upsertGroupMember(m);
           }
-          if (remoteData.activeInvite) {
+        } catch (groupErr) {
+          console.warn('[GROUP STORE] Error caching group/members during hydration:', groupErr);
+        }
+
+        if (remoteData.activeInvite) {
+          try {
             repository.createGroupInvite(remoteData.activeInvite);
+          } catch (inviteErr) {
+            console.warn('[GROUP STORE] Non-fatal: Error caching active invite during hydration:', inviteErr);
           }
+        }
+
+        try {
           if (expenses !== null) {
             for (const exp of expenses) {
               repository.upsertGroupExpense(exp, exp.participants || []);
@@ -440,7 +451,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
             }
           }
         } catch (repoErr) {
-          console.warn('[GROUP STORE] Local cache error during Supabase hydration:', repoErr);
+          console.warn('[GROUP STORE] Local cache error during financial records hydration:', repoErr);
         }
 
         // 2. Hydrate Zustand in-memory state safely
@@ -1127,77 +1138,115 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
   // ─── Group Invites & Joining ──────────────────────────────────────────
   getOrCreateInvite: async (groupId) => {
-    const group = get().getGroupById(groupId) || repository.getGroups().find((g) => g.id === groupId);
-    if (!group) {
-      throw new Error('Group not found');
+    const existingInFlight = inFlightInvites.get(groupId);
+    if (existingInFlight) {
+      console.log('[GROUP STORE] Reusing in-flight invite creation promise for group:', groupId);
+      return existingInFlight;
     }
 
-    const authUser = useAuthStore.getState().user;
-    const currentProfile = useAppStore.getState().userProfile;
-    const currentUserId = authUser?.id || (currentProfile.id !== 'user_spendz' ? currentProfile.id : null) || 'user_spendz';
-    const currentUserName = currentProfile.fullName || currentProfile.name || authUser?.user_metadata?.full_name || 'You';
+    const invitePromise = (async (): Promise<GroupInvite> => {
+      const group = get().getGroupById(groupId) || repository.getGroups().find((g) => g.id === groupId);
+      if (!group) {
+        throw new Error('Group not found');
+      }
 
-    const creatorMember = group.members?.find((m) => (currentUserId && m.userId === currentUserId) || m.friendId === null) || {
-      id: generateId(),
-      groupId,
-      friendId: null,
-      userId: currentUserId,
-      name: currentUserName,
-      role: 'admin',
-      createdAt: getTodayISO(),
-    };
+      const authUser = useAuthStore.getState().user;
+      const currentProfile = useAppStore.getState().userProfile;
+      const currentUserId = authUser?.id || (currentProfile.id !== 'user_spendz' ? currentProfile.id : null) || 'user_spendz';
+      const currentUserName = currentProfile.fullName || currentProfile.name || authUser?.user_metadata?.full_name || 'You';
 
-    const newInviteTemplate: GroupInvite = {
-      id: generateId(),
-      groupId,
-      code: generateInviteCode(group.name),
-      createdBy: currentUserId,
-      createdAt: getTodayISO(),
-      expiresAt: null,
-      isActive: true,
-    };
+      const creatorMember = group.members?.find((m) => (currentUserId && m.userId === currentUserId) || m.friendId === null) || {
+        id: generateId(),
+        groupId,
+        friendId: null,
+        userId: currentUserId,
+        name: currentUserName,
+        role: 'admin',
+        createdAt: getTodayISO(),
+      };
 
-    // 1. If authenticated, query backend for existing active invite first (idempotent, no unnecessary writes/upserts)
-    if (authUser?.id) {
-      try {
-        const existingRemoteInvite = await SupabaseQueries.getActiveInviteForGroup(groupId);
+      const newInviteTemplate: GroupInvite = {
+        id: generateId(),
+        groupId,
+        code: generateInviteCode(group.name),
+        createdBy: currentUserId,
+        createdAt: getTodayISO(),
+        expiresAt: null,
+        isActive: true,
+      };
+
+      // 1. If authenticated, query backend for existing active invite first
+      if (authUser?.id) {
+        let existingRemoteInvite: GroupInvite | null = null;
+        try {
+          existingRemoteInvite = await SupabaseQueries.getActiveInviteForGroup(groupId);
+        } catch (lookupErr: any) {
+          console.error('[GROUP STORE] Backend error checking active invite:', lookupErr);
+          // Show the real error; do not fall back to creating another invite
+          throw new Error(lookupErr?.message || 'Failed to check existing invite on server. Please check your connection.');
+        }
+
         if (existingRemoteInvite) {
           console.log('[GROUP STORE] Reusing existing active invite from Supabase:', existingRemoteInvite.code);
-          repository.createGroupInvite(existingRemoteInvite);
-          get().loadGroups();
+          // Separate local cache write
+          try {
+            repository.createGroupInvite(existingRemoteInvite);
+            get().loadGroups();
+          } catch (cacheErr) {
+            console.warn('[GROUP STORE] Non-fatal: Local cache error saving active remote invite:', cacheErr);
+          }
+          // Always return the valid remote invite to the caller
           return existingRemoteInvite;
         }
-      } catch (checkErr) {
-        console.warn('[GROUP STORE] Failed to fetch active invite from Supabase:', checkErr);
+
+        // Backend explicitly confirmed that no active invite exists
+        // Check authorization before creating an invite
+        const isAuthorized =
+          (group.members || []).length === 0 ||
+          (group.members || []).some((m) => m.userId === authUser.id || m.friendId === null);
+        if (!isAuthorized) {
+          throw new Error('You do not have permission to create an invite for this group.');
+        }
+
+        console.log('[GROUP STORE] No active invite found on backend. Creating invite in Supabase for group:', groupId);
+        const syncRes = await SupabaseQueries.syncGroupAndInviteToSupabase(group, creatorMember, newInviteTemplate);
+        if (syncRes.success && syncRes.invite) {
+          const remoteInvite: GroupInvite = syncRes.invite;
+          try {
+            repository.createGroupInvite(remoteInvite);
+            get().loadGroups();
+          } catch (cacheErr) {
+            console.warn('[GROUP STORE] Non-fatal: Local cache error saving created remote invite:', cacheErr);
+          }
+          return remoteInvite;
+        } else {
+          console.error('[GROUP STORE] Supabase invite creation failed:', {
+            code: syncRes.code,
+            error: syncRes.error,
+            groupId,
+          });
+          throw new Error(syncRes.error || "Couldn't create the group invite. Please try again.");
+        }
       }
 
-      console.log('[GROUP STORE] No active invite found on backend. Creating invite in Supabase for group:', groupId);
-      const syncRes = await SupabaseQueries.syncGroupAndInviteToSupabase(group, creatorMember, newInviteTemplate);
-      if (syncRes.success && syncRes.invite) {
-        const remoteInvite: GroupInvite = syncRes.invite;
-        repository.createGroupInvite(remoteInvite);
-        get().loadGroups();
-        return remoteInvite;
-      } else {
-        console.error('[GROUP STORE] Supabase invite creation failed:', {
-          code: syncRes.code,
-          error: syncRes.error,
-          groupId,
-        });
-        throw new Error(syncRes.error || "Couldn't create the group invite. Please try again.");
+      // 2. Unauthenticated / local-only mode: check local repository first
+      const activeInvite = repository.getActiveInviteByGroupId(groupId);
+      if (activeInvite) {
+        return activeInvite;
       }
-    }
 
-    // 2. Fallback to existing active invite in local repository
-    const activeInvite = repository.getActiveInviteByGroupId(groupId);
-    if (activeInvite) {
-      return activeInvite;
-    }
+      // 3. Fallback: save local invite
+      repository.createGroupInvite(newInviteTemplate);
+      get().loadGroups();
+      return newInviteTemplate;
+    })();
 
-    // 3. Fallback: save local invite
-    repository.createGroupInvite(newInviteTemplate);
-    get().loadGroups();
-    return newInviteTemplate;
+    inFlightInvites.set(groupId, invitePromise);
+    try {
+      return await invitePromise;
+    } finally {
+      inFlightInvites.delete(groupId);
+    }
   },
 
   getInviteByCode: (code) => {

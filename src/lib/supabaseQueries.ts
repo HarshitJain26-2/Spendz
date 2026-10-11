@@ -486,7 +486,7 @@ export const SupabaseQueries = {
           message: error.message,
           groupId,
         });
-        return null;
+        throw new Error(error.message || `Supabase query error (${error.code}) fetching active invite`);
       }
       if (!data) return null;
 
@@ -506,7 +506,7 @@ export const SupabaseQueries = {
       };
     } catch (e: any) {
       console.warn('[SUPABASE GROUP INVITE] Exception fetching active invite:', e?.message || e);
-      return null;
+      throw e;
     }
   },
 
@@ -525,7 +525,14 @@ export const SupabaseQueries = {
 
       // Step 1: FIRST check if an active, non-expired invite already exists in Supabase.
       // If found, return it immediately without writing to groups or group_members.
-      const existingActive = await this.getActiveInviteForGroup(group.id);
+      let existingActive: any = null;
+      try {
+        existingActive = await this.getActiveInviteForGroup(group.id);
+      } catch (err: any) {
+        console.warn('[SUPABASE GROUP SYNC] Could not verify existing active invite:', err?.message || err);
+        return { success: false, error: err?.message || 'Database error checking active invite', code: err?.code };
+      }
+
       if (existingActive) {
         console.log('[SUPABASE GROUP SYNC] Active invite retrieved from Supabase:', existingActive.code);
         return {
@@ -611,13 +618,15 @@ export const SupabaseQueries = {
       if (inviteError) {
         // If conflict (e.g. concurrent invite creation), attempt to fetch the active invite
         if (inviteError.code === '23505') {
-          const fallbackInvite = await this.getActiveInviteForGroup(group.id);
-          if (fallbackInvite) {
-            return {
-              success: true,
-              invite: fallbackInvite,
-            };
-          }
+          try {
+            const fallbackInvite = await this.getActiveInviteForGroup(group.id);
+            if (fallbackInvite) {
+              return {
+                success: true,
+                invite: fallbackInvite,
+              };
+            }
+          } catch (_) {}
         }
 
         console.error('[SUPABASE GROUP SYNC] Failed to insert invite in Supabase:', {
@@ -978,7 +987,12 @@ export const SupabaseQueries = {
       }
 
       // 6. Active Invite
-      const activeInvite = await this.getActiveInviteForGroup(groupId);
+      let activeInvite: any = null;
+      try {
+        activeInvite = await this.getActiveInviteForGroup(groupId);
+      } catch (inviteErr) {
+        console.warn('[SUPABASE GROUP] Non-fatal: error fetching active invite for group details:', inviteErr);
+      }
 
       return {
         group: {

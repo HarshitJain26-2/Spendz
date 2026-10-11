@@ -726,23 +726,187 @@ export const repository: DatabaseRepository = {
   },
 
   // ─── Group Invites ─────────────────────────────────────────────────────
-  createGroupInvite(invite: GroupInvite) {
+  upsertGroupInvite(invite: GroupInvite): GroupInvite {
     const db = getDb();
-    // Invalidate existing active invites for this group to maintain 1 active invite per group
-    db.update(schema.groupInvites)
-      .set({ isActive: false })
-      .where(eq(schema.groupInvites.groupId, invite.groupId))
-      .run();
+    const normalizedCode = invite.code.trim().toUpperCase();
 
-    db.insert(schema.groupInvites).values({
+    // 1. Check if a row with this code already exists
+    const existingByCode = db
+      .select()
+      .from(schema.groupInvites)
+      .where(eq(schema.groupInvites.code, normalizedCode))
+      .get();
+
+    if (existingByCode) {
+      // Conflict detection: if the code is already associated with a different group, do not silently reassign it
+      if (existingByCode.groupId !== invite.groupId) {
+        throw new Error(
+          `[REPOSITORY] Invite code conflict: code "${normalizedCode}" is already associated with group "${existingByCode.groupId}" (cannot reassign to group "${invite.groupId}")`
+        );
+      }
+
+      // Same group: update or reuse that row rather than inserting a duplicate
+      // If marked active, deactivate other active invites for this group to maintain 1 active invite per group
+      if (invite.isActive) {
+        db.update(schema.groupInvites)
+          .set({ isActive: false })
+          .where(
+            and(
+              eq(schema.groupInvites.groupId, invite.groupId),
+              eq(schema.groupInvites.isActive, true)
+            )
+          )
+          .run();
+      }
+
+      // Preserve existing row's primary key (id) and createdAt, update mutable fields
+      db.update(schema.groupInvites)
+        .set({
+          isActive: Boolean(invite.isActive),
+          expiresAt: invite.expiresAt || null,
+          createdBy: invite.createdBy || existingByCode.createdBy,
+        })
+        .where(eq(schema.groupInvites.id, existingByCode.id))
+        .run();
+
+      // If a redundant placeholder row exists with id === invite.id (and id !== existingByCode.id), remove duplicate
+      if (invite.id && invite.id !== existingByCode.id) {
+        try {
+          db.delete(schema.groupInvites)
+            .where(eq(schema.groupInvites.id, invite.id))
+            .run();
+        } catch (_) {}
+      }
+
+      return {
+        id: existingByCode.id,
+        groupId: existingByCode.groupId,
+        code: normalizedCode,
+        createdBy: invite.createdBy || existingByCode.createdBy,
+        createdAt: existingByCode.createdAt,
+        expiresAt: invite.expiresAt || null,
+        isActive: Boolean(invite.isActive),
+      };
+    }
+
+    // 2. Check if a row with this id already exists (e.g. invite code was regenerated)
+    const existingById = db
+      .select()
+      .from(schema.groupInvites)
+      .where(eq(schema.groupInvites.id, invite.id))
+      .get();
+
+    if (existingById) {
+      if (existingById.groupId !== invite.groupId) {
+        throw new Error(
+          `[REPOSITORY] Invite id conflict: invite id "${invite.id}" belongs to group "${existingById.groupId}" (cannot reassign to group "${invite.groupId}")`
+        );
+      }
+
+      if (invite.isActive) {
+        db.update(schema.groupInvites)
+          .set({ isActive: false })
+          .where(
+            and(
+              eq(schema.groupInvites.groupId, invite.groupId),
+              eq(schema.groupInvites.isActive, true)
+            )
+          )
+          .run();
+      }
+
+      db.update(schema.groupInvites)
+        .set({
+          code: normalizedCode,
+          isActive: Boolean(invite.isActive),
+          expiresAt: invite.expiresAt || null,
+          createdBy: invite.createdBy || existingById.createdBy,
+        })
+        .where(eq(schema.groupInvites.id, existingById.id))
+        .run();
+
+      return {
+        id: existingById.id,
+        groupId: existingById.groupId,
+        code: normalizedCode,
+        createdBy: invite.createdBy || existingById.createdBy,
+        createdAt: existingById.createdAt,
+        expiresAt: invite.expiresAt || null,
+        isActive: Boolean(invite.isActive),
+      };
+    }
+
+    // 3. Brand new invite: deactivate existing active invites for this group if this invite is active
+    if (invite.isActive) {
+      db.update(schema.groupInvites)
+        .set({ isActive: false })
+        .where(
+          and(
+            eq(schema.groupInvites.groupId, invite.groupId),
+            eq(schema.groupInvites.isActive, true)
+          )
+        )
+        .run();
+    }
+
+    try {
+      db.insert(schema.groupInvites).values({
+        id: invite.id,
+        groupId: invite.groupId,
+        code: normalizedCode,
+        createdBy: invite.createdBy,
+        createdAt: invite.createdAt || new Date().toISOString(),
+        expiresAt: invite.expiresAt || null,
+        isActive: Boolean(invite.isActive),
+      }).run();
+    } catch (insertErr: any) {
+      // Concurrency race guard: if another thread inserted the same code simultaneously
+      const fallbackRow = db
+        .select()
+        .from(schema.groupInvites)
+        .where(eq(schema.groupInvites.code, normalizedCode))
+        .get();
+
+      if (fallbackRow) {
+        if (fallbackRow.groupId !== invite.groupId) {
+          throw new Error(
+            `[REPOSITORY] Invite code conflict: code "${normalizedCode}" belongs to group "${fallbackRow.groupId}"`
+          );
+        }
+        db.update(schema.groupInvites)
+          .set({
+            isActive: Boolean(invite.isActive),
+            expiresAt: invite.expiresAt || null,
+          })
+          .where(eq(schema.groupInvites.id, fallbackRow.id))
+          .run();
+
+        return {
+          id: fallbackRow.id,
+          groupId: fallbackRow.groupId,
+          code: normalizedCode,
+          createdBy: invite.createdBy || fallbackRow.createdBy,
+          createdAt: fallbackRow.createdAt,
+          expiresAt: invite.expiresAt || null,
+          isActive: Boolean(invite.isActive),
+        };
+      }
+      throw insertErr;
+    }
+
+    return {
       id: invite.id,
       groupId: invite.groupId,
-      code: invite.code.trim().toUpperCase(),
+      code: normalizedCode,
       createdBy: invite.createdBy,
-      createdAt: invite.createdAt,
-      expiresAt: invite.expiresAt,
-      isActive: invite.isActive,
-    }).run();
+      createdAt: invite.createdAt || new Date().toISOString(),
+      expiresAt: invite.expiresAt || null,
+      isActive: Boolean(invite.isActive),
+    };
+  },
+
+  createGroupInvite(invite: GroupInvite): GroupInvite {
+    return this.upsertGroupInvite(invite);
   },
 
   getInviteByCode(code: string): GroupInvite | null {
@@ -793,13 +957,16 @@ export const repository: DatabaseRepository = {
       .where(and(eq(schema.groupInvites.groupId, groupId), eq(schema.groupInvites.isActive, true)))
       .all();
 
-    const active = rows.find((r) => {
+    const activeRows = rows.filter((r) => {
       if (!r.isActive) return false;
       if (r.expiresAt && new Date(r.expiresAt).getTime() < Date.now()) return false;
       return true;
     });
 
-    if (!active) return null;
+    if (activeRows.length === 0) return null;
+    activeRows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const active = activeRows[0];
+
     return {
       id: active.id,
       groupId: active.groupId,

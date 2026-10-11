@@ -502,23 +502,114 @@ export const repository: DatabaseRepository = {
   },
 
   // ─── Group Invites ─────────────────────────────────────────────────────
-  createGroupInvite(invite: GroupInvite) {
+  upsertGroupInvite(invite: GroupInvite): GroupInvite {
     const invites = getStorage<GroupInvite[]>(STORAGE_KEYS.GROUP_INVITES, []);
-    // Invalidate existing invites for this group to maintain 1 active invite per group
-    const updated = invites.map((i) =>
-      i.groupId === invite.groupId ? { ...i, isActive: false } : i
+    const normalizedCode = invite.code.trim().toUpperCase();
+
+    // 1. Check if an invite with this code already exists
+    const existingIndexByCode = invites.findIndex(
+      (i) => i.code.trim().toUpperCase() === normalizedCode
     );
-    updated.unshift({
+
+    if (existingIndexByCode !== -1) {
+      const existing = invites[existingIndexByCode];
+      if (existing.groupId !== invite.groupId) {
+        throw new Error(
+          `[REPOSITORY] Invite code conflict: code "${normalizedCode}" is already associated with group "${existing.groupId}" (cannot reassign to group "${invite.groupId}")`
+        );
+      }
+
+      // Same group: update or reuse that row rather than inserting a duplicate
+      const updated = invites.map((i) => {
+        if (i.id === existing.id) {
+          return {
+            ...existing,
+            isActive: Boolean(invite.isActive),
+            expiresAt: invite.expiresAt || null,
+            createdBy: invite.createdBy || existing.createdBy,
+          };
+        }
+        if (invite.isActive && i.groupId === invite.groupId) {
+          return { ...i, isActive: false };
+        }
+        return i;
+      });
+
+      // Remove redundant duplicate if another row had id === invite.id
+      const deduplicated = updated.filter(
+        (i) => !(invite.id && i.id === invite.id && i.id !== existing.id)
+      );
+
+      setStorage(STORAGE_KEYS.GROUP_INVITES, deduplicated);
+      return {
+        ...existing,
+        isActive: Boolean(invite.isActive),
+        expiresAt: invite.expiresAt || null,
+        createdBy: invite.createdBy || existing.createdBy,
+      };
+    }
+
+    // 2. Check if an invite with this id already exists
+    const existingIndexById = invites.findIndex((i) => i.id === invite.id);
+    if (existingIndexById !== -1) {
+      const existing = invites[existingIndexById];
+      if (existing.groupId !== invite.groupId) {
+        throw new Error(
+          `[REPOSITORY] Invite id conflict: invite id "${invite.id}" belongs to group "${existing.groupId}" (cannot reassign to group "${invite.groupId}")`
+        );
+      }
+
+      const updated = invites.map((i) => {
+        if (i.id === invite.id) {
+          return {
+            ...existing,
+            code: normalizedCode,
+            isActive: Boolean(invite.isActive),
+            expiresAt: invite.expiresAt || null,
+            createdBy: invite.createdBy || existing.createdBy,
+          };
+        }
+        if (invite.isActive && i.groupId === invite.groupId) {
+          return { ...i, isActive: false };
+        }
+        return i;
+      });
+
+      setStorage(STORAGE_KEYS.GROUP_INVITES, updated);
+      return {
+        ...existing,
+        code: normalizedCode,
+        isActive: Boolean(invite.isActive),
+        expiresAt: invite.expiresAt || null,
+        createdBy: invite.createdBy || existing.createdBy,
+      };
+    }
+
+    // 3. Brand new invite: deactivate existing for group if active, and insert
+    let updated = invites;
+    if (invite.isActive) {
+      updated = updated.map((i) =>
+        i.groupId === invite.groupId ? { ...i, isActive: false } : i
+      );
+    }
+    const newInvite: GroupInvite = {
       ...invite,
-      code: invite.code.trim().toUpperCase(),
-    });
+      code: normalizedCode,
+      isActive: Boolean(invite.isActive),
+    };
+    updated.unshift(newInvite);
     setStorage(STORAGE_KEYS.GROUP_INVITES, updated);
+    return newInvite;
+  },
+
+  createGroupInvite(invite: GroupInvite): GroupInvite {
+    return this.upsertGroupInvite(invite);
   },
 
   getInviteByCode(code: string): GroupInvite | null {
     const invites = getStorage<GroupInvite[]>(STORAGE_KEYS.GROUP_INVITES, []);
     const upperCode = code.trim().toUpperCase();
-    return invites.find((i) => i.code.toUpperCase() === upperCode) || null;
+    return invites.find((i) => i.code.trim().toUpperCase() === upperCode) || null;
   },
 
   getInvitesByGroupId(groupId: string): GroupInvite[] {
@@ -528,12 +619,15 @@ export const repository: DatabaseRepository = {
 
   getActiveInviteByGroupId(groupId: string): GroupInvite | null {
     const invites = getStorage<GroupInvite[]>(STORAGE_KEYS.GROUP_INVITES, []);
-    const active = invites.find((i) => {
+    const activeRows = invites.filter((i) => {
       if (i.groupId !== groupId || !i.isActive) return false;
       if (i.expiresAt && new Date(i.expiresAt).getTime() < Date.now()) return false;
       return true;
     });
-    return active || null;
+
+    if (activeRows.length === 0) return null;
+    activeRows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return activeRows[0];
   },
 
   revokeGroupInvite(inviteId: string) {
