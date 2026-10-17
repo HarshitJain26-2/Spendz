@@ -120,5 +120,7 @@ export interface DatabaseRepository {
     themeMode: import('@/types').ThemeMode;
     userProfile: Partial<import('@/types').UserProfile>;
   }>): void;
+  clearCachedGroupData(): void;
+  clearUserProfileSettings(): void;
 }
 

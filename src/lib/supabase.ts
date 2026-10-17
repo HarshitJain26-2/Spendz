@@ -76,3 +76,37 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: Platform.OS === 'web',
   },
 });
+
+/**
+ * Explicitly cleans up any persisted Supabase authentication tokens from storage.
+ * Used during sign-out and account switching to prevent stale device sessions.
+ */
+export const clearPersistedAuthStorage = async (): Promise<void> => {
+  try {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const k = window.localStorage.key(i);
+          if (k && (k.startsWith('sb-') || k.includes('supabase.auth.token'))) {
+            keysToRemove.push(k);
+          }
+        }
+        for (const k of keysToRemove) {
+          window.localStorage.removeItem(k);
+        }
+      }
+    } else {
+      try {
+        const urlHost = new URL(supabaseUrl).hostname.split('.')[0];
+        const defaultKey = `sb-${urlHost}-auth-token`;
+        await SecureStore.deleteItemAsync(defaultKey);
+      } catch {}
+      try {
+        await SecureStore.deleteItemAsync('supabase.auth.token');
+      } catch {}
+    }
+  } catch (e) {
+    console.warn('[Spendz Auth Storage] Error clearing persisted auth storage:', e);
+  }
+};

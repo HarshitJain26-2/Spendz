@@ -883,5 +883,26 @@ export const repository: DatabaseRepository = {
       }
     }
   },
+
+  clearCachedGroupData() {
+    setStorage(STORAGE_KEYS.GROUPS, []);
+    setStorage(STORAGE_KEYS.GROUP_MEMBERS, []);
+    setStorage(STORAGE_KEYS.GROUP_INVITES, []);
+    setStorage(STORAGE_KEYS.GROUP_EXPENSES, []);
+    setStorage(STORAGE_KEYS.GROUP_PARTICIPANTS, []);
+    setStorage(STORAGE_KEYS.GROUP_SETTLEMENTS, []);
+  },
+
+  clearUserProfileSettings() {
+    const settings = getStorage<Record<string, string>>(STORAGE_KEYS.SETTINGS, {});
+    delete settings['userName'];
+    delete settings['profileEmail'];
+    delete settings['profilePhone'];
+    delete settings['profileAvatar'];
+    delete settings['profileId'];
+    delete settings['profileCreatedAt'];
+    delete settings['profileUpdatedAt'];
+    setStorage(STORAGE_KEYS.SETTINGS, settings);
+  },
 };
 

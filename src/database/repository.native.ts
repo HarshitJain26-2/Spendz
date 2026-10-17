@@ -1298,5 +1298,31 @@ export const repository: DatabaseRepository = {
       }
     }
   },
+
+  clearCachedGroupData() {
+    const db = getDb();
+    db.delete(schema.groupExpenseParticipants).run();
+    db.delete(schema.groupExpenses).run();
+    db.delete(schema.groupSettlements).run();
+    db.delete(schema.groupInvites).run();
+    db.delete(schema.groupMembers).run();
+    db.delete(schema.groups).run();
+  },
+
+  clearUserProfileSettings() {
+    const db = getDb();
+    const keys = [
+      'userName',
+      'profileEmail',
+      'profilePhone',
+      'profileAvatar',
+      'profileId',
+      'profileCreatedAt',
+      'profileUpdatedAt',
+    ];
+    for (const key of keys) {
+      db.delete(schema.appSettings).where(eq(schema.appSettings.key, key)).run();
+    }
+  },
 };
 
