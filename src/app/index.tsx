@@ -10,6 +10,7 @@ export default function Index() {
   const accounts = useAccountStore((s) => s.accounts);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isInitialized = useAuthStore((s) => s.isInitialized);
+  const isLoading = useAuthStore((s) => s.isLoading);
 
   // Canonical onboarding check with legacy-data fallback
   const isCompleted = hasOnboarded || accounts.length > 0;
@@ -21,7 +22,7 @@ export default function Index() {
     }
   }, [hasOnboarded, accounts.length, setHasOnboarded]);
 
-  if (!isInitialized) {
+  if (!isInitialized || isLoading) {
     return null;
   }
 

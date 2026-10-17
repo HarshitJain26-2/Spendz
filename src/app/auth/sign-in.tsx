@@ -78,7 +78,7 @@ export default function SignInScreen() {
     setGeneralError(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { user, session, error } = await useAuthStore.getState().signInWithPassword({
         email: email.trim(),
         password,
       });
@@ -89,8 +89,8 @@ export default function SignInScreen() {
         return;
       }
 
-      if (data.session) {
-        // Successful authentication
+      if (session && user) {
+        // Successful authentication and state synchronization
         if (intendedDestination) {
           const dest = intendedDestination;
           setIntendedDestination(null);
@@ -98,6 +98,8 @@ export default function SignInScreen() {
         } else {
           router.replace('/');
         }
+      } else {
+        setGeneralError('Authentication failed. Please verify your credentials and try again.');
       }
     } catch (e: any) {
       setGeneralError(formatAuthError(e));

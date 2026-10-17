@@ -22,6 +22,7 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatAuthError } from '@/utils/authErrors';
 import { useAppStore } from '@/store/appStore';
 import { useAuthStore } from '@/store/authStore';
+import { useGroupStore } from '@/store/groupStore';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -126,14 +127,21 @@ export default function SignUpScreen() {
       }
 
       // Check if session was returned directly or email confirmation is required
-      if (data.session) {
+      if (data.session && data.user) {
         // Authenticated immediately
+        useAuthStore.setState({
+          session: data.session,
+          user: data.user,
+          isAuthenticated: true,
+          isLoading: false,
+        });
         setUserProfile({
-          id: data.user?.id,
+          id: data.user.id,
           fullName: trimmedName,
           name: trimmedName,
           email: trimmedEmail,
         });
+        useGroupStore.getState().loadGroups();
         const dest = useAuthStore.getState().intendedDestination;
         if (dest) {
           useAuthStore.getState().setIntendedDestination(null);

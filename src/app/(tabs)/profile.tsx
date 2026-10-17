@@ -68,7 +68,10 @@ export default function ProfileTabScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            await useAuthStore.getState().signOut();
+            const { error } = await useAuthStore.getState().signOut();
+            if (error) {
+              console.warn('[Spendz] Sign out completed with warning:', error.message);
+            }
             router.replace('/auth/sign-in');
           },
         },

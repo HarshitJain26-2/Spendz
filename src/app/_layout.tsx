@@ -39,10 +39,12 @@ function NavigationProtection() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isInitialized = useAuthStore((s) => s.isInitialized);
+  const isAuthLoading = useAuthStore((s) => s.isLoading);
   const setIntendedDestination = useAuthStore((s) => s.setIntendedDestination);
 
   useEffect(() => {
-    if (!isInitialized) return;
+    // Only guard navigation when auth is initialized and not actively loading
+    if (!isInitialized || isAuthLoading) return;
 
     const segmentList = segments as string[];
     // When at root ('/' or 'index'), index.tsx handles the initial redirection
@@ -59,7 +61,7 @@ function NavigationProtection() {
     } else if (isAuthenticated && inAuthGroup) {
       router.replace('/');
     }
-  }, [isAuthenticated, isInitialized, segments, router, setIntendedDestination]);
+  }, [isAuthenticated, isInitialized, isAuthLoading, segments, router, setIntendedDestination]);
 
   return null;
 }
@@ -95,18 +97,22 @@ export default function RootLayout() {
       // 3. Load persisted app settings & profile (including legacy data fallback)
       useAppStore.getState().loadSettings();
 
-      // 4. Load all data stores
+      // 4. Load local data stores
       useAccountStore.getState().loadAccounts();
       useCategoryStore.getState().loadCategories();
       useTransactionStore.getState().loadTransactions();
       useFriendStore.getState().loadFriends();
       useSplitStore.getState().loadSplitExpenses();
-      useGroupStore.getState().loadGroups();
 
       // 5. Initialize auth session (retrieves persistent session)
       await useAuthStore.getState().initAuth();
 
-      // 6. Complete hydration
+      // 6. Load cloud groups if authenticated
+      if (useAuthStore.getState().isAuthenticated) {
+        useGroupStore.getState().loadGroups();
+      }
+
+      // 7. Complete hydration
       setIsHydrated(true);
       setIsDbReady(true);
       setInitStatus('ready');
