@@ -34,6 +34,7 @@ interface GroupState {
   isLoading: boolean;
 
   loadGroups: () => void;
+  reset: () => void;
   loadGroupFromSupabase: (groupId: string, force?: boolean) => Promise<Group | null>;
   subscribeToGroupRealtime: (groupId: string) => () => void;
   addGroup: (data: { name: string; icon?: string; memberFriendIds: string[] }) => Group;
@@ -357,6 +358,7 @@ let lastUserGroupsSyncTime = 0;
 const inFlightHydrations = new Map<string, Promise<any>>();
 const lastGroupHydrationTime = new Map<string, number>();
 const inFlightInvites = new Map<string, Promise<GroupInvite>>();
+const activeRealtimeChannels = new Set<any>();
 
 const USER_GROUPS_SYNC_COOLDOWN_MS = 20_000; // 20s cooldown between auto background user group list syncs
 const GROUP_HYDRATION_COOLDOWN_MS = 15_000; // 15s cooldown between automatic full group hydrations
@@ -395,6 +397,37 @@ export const useGroupStore = create<GroupState>((set, get) => ({
         }
       })();
     }
+  },
+
+  reset: () => {
+    // Unsubscribe all active Realtime subscriptions
+    for (const ch of activeRealtimeChannels) {
+      try {
+        supabase.removeChannel(ch);
+      } catch {}
+    }
+    activeRealtimeChannels.clear();
+
+    // Reset module-level throttles and caches
+    isSyncingUserGroups = false;
+    lastUserGroupsSyncTime = 0;
+    inFlightHydrations.clear();
+    lastGroupHydrationTime.clear();
+    inFlightInvites.clear();
+
+    // Clear local repository cached group data
+    try {
+      repository.clearCachedGroupData();
+    } catch (e) {
+      console.warn('[GROUP STORE] Failed to clear cached group data:', e);
+    }
+
+    set({
+      groups: [],
+      groupExpenses: [],
+      groupSettlements: [],
+      isLoading: false,
+    });
   },
 
   loadGroupFromSupabase: async (groupId: string, force = false) => {
@@ -549,9 +582,11 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     channel.subscribe((status) => {
       console.log(`[GROUP STORE REALTIME] Subscription status for group ${groupId}:`, status);
     });
+    activeRealtimeChannels.add(channel);
 
     return () => {
       console.log('[GROUP STORE REALTIME] Unsubscribing channel for group:', groupId);
+      activeRealtimeChannels.delete(channel);
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
@@ -1111,8 +1146,9 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     const expenses = groupExpenses.filter((e) => e.groupId === groupId);
     const settlements = groupSettlements.filter((s) => s.groupId === groupId);
     const friends = useFriendStore.getState().friends;
+    const authUser = useAuthStore.getState().user;
     const currentProfile = useAppStore.getState().userProfile;
-    const currentUserId = currentProfile.id || useAuthStore.getState().user?.id;
+    const currentUserId = authUser?.id || (currentProfile.id !== 'user_spendz' ? currentProfile.id : null);
     return calculateGroupMemberBalances(group, expenses, settlements, friends, currentUserId);
   },
 

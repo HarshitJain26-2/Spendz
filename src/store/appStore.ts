@@ -20,10 +20,23 @@ interface AppState {
   // User
   userProfile: UserProfile;
   setUserProfile: (profile: Partial<UserProfile>) => void;
+  resetUserProfile: () => void;
 
   // Load from DB
   loadSettings: () => void;
 }
+
+const DEFAULT_PROFILE: UserProfile = {
+  id: 'user_spendz',
+  name: '',
+  fullName: '',
+  email: '',
+  phone: '',
+  avatarUri: null,
+  currency: '₹',
+  createdAt: '',
+  updatedAt: '',
+};
 
 export const useAppStore = create<AppState>((set, get) => ({
   isHydrated: false,
@@ -52,32 +65,36 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ themeMode: mode });
   },
 
-  userProfile: {
-    id: 'user_spendz',
-    name: '',
-    fullName: '',
-    email: '',
-    phone: '',
-    avatarUri: null,
-    currency: '₹',
-    createdAt: '',
-    updatedAt: '',
-  },
+  userProfile: { ...DEFAULT_PROFILE },
   setUserProfile: (profile) => {
     const prev = get().userProfile;
     const now = new Date().toISOString();
+
+    // If switching to a different user, start from clean base rather than inheriting previous user's profile
+    const isSwitchingUser = !!profile.id && !!prev.id && profile.id !== prev.id && prev.id !== 'user_spendz';
+    const base = isSwitchingUser
+      ? {
+          ...DEFAULT_PROFILE,
+          id: profile.id,
+          currency: prev.currency || '₹',
+          createdAt: now,
+          updatedAt: now,
+        }
+      : prev;
+
     const resolvedName =
       profile.fullName !== undefined
         ? profile.fullName
         : profile.name !== undefined
         ? profile.name
-        : prev.name;
+        : base.name;
+
     const updated: UserProfile = {
-      ...prev,
+      ...base,
       ...profile,
       name: resolvedName,
       fullName: resolvedName,
-      createdAt: prev.createdAt || now,
+      createdAt: base.createdAt || now,
       updatedAt: now,
     };
     try {
@@ -86,6 +103,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.warn('Failed to save userProfile:', e);
     }
     set({ userProfile: updated });
+  },
+
+  resetUserProfile: () => {
+    try {
+      repository.clearUserProfileSettings();
+    } catch (e) {
+      console.warn('Failed to clear userProfile settings:', e);
+    }
+    set({ userProfile: { ...DEFAULT_PROFILE } });
   },
 
   loadSettings: () => {
