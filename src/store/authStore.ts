@@ -28,17 +28,27 @@ interface AuthState {
 let authSubscription: { unsubscribe: () => void } | null = null;
 
 const syncProfileForUser = (user: User) => {
+  const currentProfile = useAppStore.getState().userProfile;
+  const existingValidName =
+    currentProfile.id === user.id &&
+    (currentProfile.fullName && currentProfile.fullName !== 'User'
+      ? currentProfile.fullName
+      : currentProfile.name && currentProfile.name !== 'User'
+      ? currentProfile.name
+      : '');
+
   const metaName =
     user.user_metadata?.full_name ||
     user.user_metadata?.name ||
+    existingValidName ||
     user.email?.split('@')[0] ||
     '';
-  const metaPhone = user.user_metadata?.phone || '';
-  const metaAvatar = user.user_metadata?.avatar_url || null;
+  const metaPhone = user.user_metadata?.phone || currentProfile.phone || '';
+  const metaAvatar = user.user_metadata?.avatar_url || currentProfile.avatarUri || null;
 
   useAppStore.getState().setUserProfile({
     id: user.id,
-    email: user.email || '',
+    email: user.email || currentProfile.email || '',
     name: metaName,
     fullName: metaName,
     phone: metaPhone,

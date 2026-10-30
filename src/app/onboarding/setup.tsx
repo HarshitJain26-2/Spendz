@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/Input';
 import { AmountInput } from '@/components/ui/AmountInput';
 import { DynamicIcon } from '@/components/ui/DynamicIcon';
 import { useAppStore } from '@/store/appStore';
+import { useAuthStore } from '@/store/authStore';
 import { useAccountStore } from '@/store/accountStore';
 import { ACCOUNT_TYPES, type AccountTypeConfig } from '@/constants/accountTypes';
 import { typography } from '@/theme/typography';
@@ -28,9 +29,25 @@ export default function SetupScreen() {
   const { colors } = useTheme();
   const setHasOnboarded = useAppStore((s) => s.setHasOnboarded);
   const setUserProfile = useAppStore((s) => s.setUserProfile);
+  const userProfile = useAppStore((s) => s.userProfile);
+  const authUser = useAuthStore((s) => s.user);
   const addAccount = useAccountStore((s) => s.addAccount);
 
-  const [name, setName] = useState('');
+  const metaName =
+    authUser?.user_metadata?.full_name?.trim() ||
+    authUser?.user_metadata?.name?.trim() ||
+    '';
+
+  const profileName =
+    userProfile.fullName && userProfile.fullName !== 'User'
+      ? userProfile.fullName.trim()
+      : userProfile.name && userProfile.name !== 'User'
+      ? userProfile.name.trim()
+      : '';
+
+  const existingName = profileName || metaName || '';
+
+  const [name, setName] = useState(existingName);
   const [selectedType, setSelectedType] = useState<AccountTypeConfig>(
     ACCOUNT_TYPES[0]
   );
@@ -40,8 +57,12 @@ export default function SetupScreen() {
   const handleContinue = () => {
     if (!accountName.trim()) return;
 
-    // Save user profile
-    setUserProfile({ name: name.trim() || 'User' });
+    // Save user profile with resolved name
+    const finalName = name.trim() || existingName.trim() || 'User';
+    setUserProfile({
+      name: finalName,
+      fullName: finalName,
+    });
 
     // Create first account
     addAccount({
@@ -73,23 +94,27 @@ export default function SetupScreen() {
           {/* Header */}
           <Animated.View entering={FadeInDown.delay(100).duration(500)}>
             <Text style={[styles.title, { color: colors.textPrimary }]}>
-              Set up your first account
+              {existingName ? `Welcome, ${existingName}!` : 'Set up your first account'}
             </Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              Let's start tracking your money. You can add more accounts later.
+              {existingName
+                ? "Let's set up your first account to start tracking your money. You can add more accounts later."
+                : "Let's start tracking your money. You can add more accounts later."}
             </Text>
           </Animated.View>
 
-          {/* Name Input */}
-          <Animated.View entering={FadeInDown.delay(200).duration(500)}>
-            <Input
-              label="Your Name"
-              placeholder="What should we call you?"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-            />
-          </Animated.View>
+          {/* Name Input - only show if name was not provided during account creation */}
+          {!existingName && (
+            <Animated.View entering={FadeInDown.delay(200).duration(500)}>
+              <Input
+                label="Your Name"
+                placeholder="What should we call you?"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+              />
+            </Animated.View>
+          )}
 
           {/* Account Name */}
           <Animated.View entering={FadeInDown.delay(300).duration(500)}>
