@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -54,6 +55,35 @@ export default function EditProfileScreen() {
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Keyboard and scroll management
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const isPhoneFocused = useRef(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      const height = e.endCoordinates.height;
+      setKeyboardHeight(height);
+      if (isPhoneFocused.current) {
+        setTimeout(() => {
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        }, 50);
+      }
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const validate = () => {
     let isValid = true;
@@ -155,13 +185,19 @@ export default function EditProfileScreen() {
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
       >
         <ScrollView
+          ref={scrollViewRef}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 80 : spacing['4xl'] },
+          ]}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
           {/* 2. Avatar Preview Card */}
           <Card style={styles.avatarCard} padding="lg">
@@ -231,6 +267,9 @@ export default function EditProfileScreen() {
                 setFullName(text);
                 if (nameError) setNameError('');
               }}
+              onFocus={() => {
+                isPhoneFocused.current = false;
+              }}
               error={nameError}
               autoCapitalize="words"
               leftIcon={<User size={18} color={colors.textTertiary} />}
@@ -243,6 +282,12 @@ export default function EditProfileScreen() {
               onChangeText={(text) => {
                 setEmail(text);
                 if (emailError) setEmailError('');
+              }}
+              onFocus={() => {
+                isPhoneFocused.current = false;
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollTo({ y: 220, animated: true });
+                }, 100);
               }}
               error={emailError}
               keyboardType="email-address"
@@ -257,6 +302,15 @@ export default function EditProfileScreen() {
               onChangeText={(text) => {
                 setPhone(text);
                 if (phoneError) setPhoneError('');
+              }}
+              onFocus={() => {
+                isPhoneFocused.current = true;
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollToEnd({ animated: true });
+                }, 100);
+              }}
+              onBlur={() => {
+                isPhoneFocused.current = false;
               }}
               error={phoneError}
               keyboardType="phone-pad"

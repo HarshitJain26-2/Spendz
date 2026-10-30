@@ -1578,3 +1578,15 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     }
   },
 }));
+
+// Keep groups in sync with auth state changes without creating circular dependencies
+useAuthStore.subscribe((state, prevState) => {
+  const prevUserId = prevState?.user?.id;
+  const currentUserId = state?.user?.id;
+  if (prevUserId !== currentUserId) {
+    useGroupStore.getState().reset();
+    if (currentUserId) {
+      useGroupStore.getState().loadGroups();
+    }
+  }
+});

@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, clearPersistedAuthStorage } from '@/lib/supabase';
 import { useAppStore } from './appStore';
-import { useGroupStore } from './groupStore';
 
 interface AuthState {
   // Auth state
@@ -122,13 +121,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           }
 
           const newUser = newSession.user;
-          const currentAuthUser = get().user;
-          const isDifferentUser = !currentAuthUser || currentAuthUser.id !== newUser.id;
-
-          if (isDifferentUser) {
-            useGroupStore.getState().reset();
-          }
-
           syncProfileForUser(newUser);
 
           set({
@@ -137,10 +129,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             isAuthenticated: true,
             isLoading: false,
           });
-
-          if (isDifferentUser) {
-            useGroupStore.getState().loadGroups();
-          }
         });
         authSubscription = listenerData.subscription;
       }
@@ -199,10 +187,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         console.log('[Spendz Auth] Successfully authenticated user ID:', user.id);
       }
 
-      // Invalidate and clear previous account data if switching accounts
+      // Invalidate and clear previous profile data if switching accounts
       const prevUser = get().user;
       if (prevUser && prevUser.id !== user.id) {
-        useGroupStore.getState().reset();
         useAppStore.getState().resetUserProfile();
       }
 
@@ -216,9 +203,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       // Update user profile state for the newly authenticated account
       syncProfileForUser(user);
-
-      // Reload authorized cloud data for the authenticated account
-      useGroupStore.getState().loadGroups();
 
       return { user, session, error: null };
     } catch (e: any) {
@@ -237,10 +221,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         console.log('[Spendz Auth] Signing out user ID:', currentUserId ?? 'unknown');
       }
 
-      // 1. Invalidate and clear cloud data from memory & cache
-      useGroupStore.getState().reset();
-
-      // 2. Clear profile state in memory and database settings
+      // 1. Clear profile state in memory and database settings
       useAppStore.getState().resetUserProfile();
 
       // 3. Perform Supabase sign out

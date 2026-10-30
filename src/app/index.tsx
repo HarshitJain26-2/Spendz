@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
-import { Redirect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useAppStore } from '@/store/appStore';
 import { useAccountStore } from '@/store/accountStore';
 import { useAuthStore } from '@/store/authStore';
 
 export default function Index() {
+  const router = useRouter();
   const hasOnboarded = useAppStore((s) => s.hasOnboarded);
   const setHasOnboarded = useAppStore((s) => s.setHasOnboarded);
   const accounts = useAccountStore((s) => s.accounts);
@@ -22,18 +23,24 @@ export default function Index() {
     }
   }, [hasOnboarded, accounts.length, setHasOnboarded]);
 
-  if (!isInitialized || isLoading) {
-    return null;
-  }
+  useEffect(() => {
+    if (!isInitialized || isLoading) {
+      return;
+    }
 
-  if (!isAuthenticated) {
-    return <Redirect href="/auth/sign-in" />;
-  }
+    const timer = setTimeout(() => {
+      if (!isAuthenticated) {
+        router.replace('/auth/sign-in');
+      } else if (isCompleted) {
+        router.replace('/(tabs)');
+      } else {
+        router.replace('/onboarding');
+      }
+    }, 0);
 
-  if (isCompleted) {
-    return <Redirect href="/(tabs)" />;
-  }
+    return () => clearTimeout(timer);
+  }, [isInitialized, isLoading, isAuthenticated, isCompleted, router]);
 
-  return <Redirect href="/onboarding" />;
+  return null;
 }
 

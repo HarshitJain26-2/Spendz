@@ -66,8 +66,6 @@ export const Input: React.FC<InputProps> = ({
         {hasLeftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
         <TextInput
           placeholderTextColor={colors.textTertiary}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
           style={[
             styles.input,
             {
@@ -78,6 +76,14 @@ export const Input: React.FC<InputProps> = ({
             style,
           ]}
           {...props}
+          onFocus={(e) => {
+            setIsFocused(true);
+            props.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setIsFocused(false);
+            props.onBlur?.(e);
+          }}
         />
         {hasRightIcon && <View style={styles.rightIcon}>{rightIcon}</View>}
       </View>

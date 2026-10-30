@@ -52,15 +52,19 @@ function NavigationProtection() {
 
     const inAuthGroup = segmentList[0] === 'auth';
 
-    if (!isAuthenticated && !inAuthGroup) {
-      const path = `/${segmentList.join('/')}`;
-      if (path !== '/index' && path !== '/') {
-        setIntendedDestination(path);
+    const timer = setTimeout(() => {
+      if (!isAuthenticated && !inAuthGroup) {
+        const path = `/${segmentList.join('/')}`;
+        if (path !== '/index' && path !== '/') {
+          setIntendedDestination(path);
+        }
+        router.replace('/auth/sign-in');
+      } else if (isAuthenticated && inAuthGroup) {
+        router.replace('/');
       }
-      router.replace('/auth/sign-in');
-    } else if (isAuthenticated && inAuthGroup) {
-      router.replace('/');
-    }
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [isAuthenticated, isInitialized, isAuthLoading, segments, router, setIntendedDestination]);
 
   return null;
@@ -146,12 +150,14 @@ export default function RootLayout() {
         const parsedCode = parseInviteCodeFromUrlOrInput(event.url);
         if (parsedCode) {
           const targetPath = `/groups/join?code=${encodeURIComponent(parsedCode)}`;
-          if (!isAuthenticated) {
-            useAuthStore.getState().setIntendedDestination(targetPath);
-            router.push('/auth/sign-in');
-          } else {
-            router.push(targetPath as any);
-          }
+          setTimeout(() => {
+            if (!isAuthenticated) {
+              useAuthStore.getState().setIntendedDestination(targetPath);
+              router.push('/auth/sign-in');
+            } else {
+              router.push(targetPath as any);
+            }
+          }, 0);
         }
       } catch (err) {
         console.warn('Failed to handle deep link URL:', err);
