@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -58,8 +59,34 @@ export default function EditProfileScreen() {
 
   // Keyboard and scroll management
   const scrollViewRef = useRef<ScrollView>(null);
+  const emailContainerRef = useRef<View>(null);
+  const phoneContainerRef = useRef<View>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const isPhoneFocused = useRef(false);
+  const activeFieldRef = useRef<'name' | 'email' | 'phone' | null>(null);
+
+  const scrollToField = (targetRef: View | null, currentKeyboardHeight?: number) => {
+    if (!targetRef || !scrollViewRef.current) return;
+
+    const kh = currentKeyboardHeight || keyboardHeight || 300;
+    targetRef.measureLayout(
+      scrollViewRef.current as any,
+      (_left, top, _width, height) => {
+        const windowHeight = Dimensions.get('window').height;
+        // Visible height above keyboard (excluding top header)
+        const visibleHeight = windowHeight - kh - 80;
+        const inputBottom = top + height;
+        // Position inputBottom cleanly 16px above the top of the mobile keyboard
+        const targetY = Math.max(0, inputBottom - visibleHeight + 16);
+        scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+      },
+      () => {
+        // Fallback for phone input if measurement is unavailable
+        if (targetRef === phoneContainerRef.current) {
+          scrollViewRef.current?.scrollTo({ y: 120, animated: true });
+        }
+      }
+    );
+  };
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -68,9 +95,13 @@ export default function EditProfileScreen() {
     const showSub = Keyboard.addListener(showEvent, (e) => {
       const height = e.endCoordinates.height;
       setKeyboardHeight(height);
-      if (isPhoneFocused.current) {
+      if (activeFieldRef.current === 'phone') {
         setTimeout(() => {
-          scrollViewRef.current?.scrollToEnd({ animated: true });
+          scrollToField(phoneContainerRef.current, height);
+        }, 50);
+      } else if (activeFieldRef.current === 'email') {
+        setTimeout(() => {
+          scrollToField(emailContainerRef.current, height);
         }, 50);
       }
     });
@@ -185,7 +216,7 @@ export default function EditProfileScreen() {
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.flex}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
       >
@@ -194,10 +225,9 @@ export default function EditProfileScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 80 : spacing['4xl'] },
+            { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 20 : spacing['4xl'] },
           ]}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
           {/* 2. Avatar Preview Card */}
           <Card style={styles.avatarCard} padding="lg">
@@ -268,55 +298,66 @@ export default function EditProfileScreen() {
                 if (nameError) setNameError('');
               }}
               onFocus={() => {
-                isPhoneFocused.current = false;
+                activeFieldRef.current = 'name';
               }}
               error={nameError}
               autoCapitalize="words"
               leftIcon={<User size={18} color={colors.textTertiary} />}
             />
 
-            <Input
-              label="Email Address"
-              placeholder="e.g., harshit@example.com"
-              value={email}
-              onChangeText={(text) => {
-                setEmail(text);
-                if (emailError) setEmailError('');
-              }}
-              onFocus={() => {
-                isPhoneFocused.current = false;
-                setTimeout(() => {
-                  scrollViewRef.current?.scrollTo({ y: 220, animated: true });
-                }, 100);
-              }}
-              error={emailError}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              leftIcon={<Mail size={18} color={colors.textTertiary} />}
-            />
+            <View ref={emailContainerRef} collapsable={false}>
+              <Input
+                label="Email Address"
+                placeholder="e.g., harshit@example.com"
+                value={email}
+                onChangeText={(text) => {
+                  setEmail(text);
+                  if (emailError) setEmailError('');
+                }}
+                onFocus={() => {
+                  activeFieldRef.current = 'email';
+                  if (keyboardHeight > 0) {
+                    scrollToField(emailContainerRef.current, keyboardHeight);
+                  }
+                }}
+                onBlur={() => {
+                  if (activeFieldRef.current === 'email') {
+                    activeFieldRef.current = null;
+                  }
+                }}
+                error={emailError}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                leftIcon={<Mail size={18} color={colors.textTertiary} />}
+              />
+            </View>
 
-            <Input
-              label="Phone Number"
-              placeholder="e.g., +91 98765 43210"
-              value={phone}
-              onChangeText={(text) => {
-                setPhone(text);
-                if (phoneError) setPhoneError('');
-              }}
-              onFocus={() => {
-                isPhoneFocused.current = true;
-                setTimeout(() => {
-                  scrollViewRef.current?.scrollToEnd({ animated: true });
-                }, 100);
-              }}
-              onBlur={() => {
-                isPhoneFocused.current = false;
-              }}
-              error={phoneError}
-              keyboardType="phone-pad"
-              leftIcon={<Phone size={18} color={colors.textTertiary} />}
-              containerStyle={{ marginBottom: 0 }}
-            />
+            <View ref={phoneContainerRef} collapsable={false}>
+              <Input
+                label="Phone Number"
+                placeholder="e.g., +91 98765 43210"
+                value={phone}
+                onChangeText={(text) => {
+                  setPhone(text);
+                  if (phoneError) setPhoneError('');
+                }}
+                onFocus={() => {
+                  activeFieldRef.current = 'phone';
+                  if (keyboardHeight > 0) {
+                    scrollToField(phoneContainerRef.current, keyboardHeight);
+                  }
+                }}
+                onBlur={() => {
+                  if (activeFieldRef.current === 'phone') {
+                    activeFieldRef.current = null;
+                  }
+                }}
+                error={phoneError}
+                keyboardType="phone-pad"
+                leftIcon={<Phone size={18} color={colors.textTertiary} />}
+                containerStyle={{ marginBottom: 0 }}
+              />
+            </View>
           </Card>
 
           {/* 4. Action Buttons */}
