@@ -1,108 +1,107 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   StyleSheet,
-  Animated,
   TouchableOpacity,
   Platform,
 } from 'react-native';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  runOnJS,
+} from 'react-native-reanimated';
 import { useTheme } from '@/hooks/useTheme';
+import { LogoAnimation } from './LogoAnimation';
 
-interface AnimatedSplashScreenProps {
+export interface AnimatedSplashScreenProps {
+  /** Indicates whether backend hydration, DB, fonts and auth have finished initializing */
   isAppReady?: boolean;
+  /** Callback fired once splash overlay has fully faded out and unmounted */
   onFinish: () => void;
+  /** Callback fired when the custom splash screen is mounted and ready to be displayed */
   onReadyToDisplay?: () => void;
 }
-
-// Statically require the video asset from the project assets directory
-const splashVideoSource = require('@/assets/videos/spendz-splash-animation.mp4');
 
 export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
   isAppReady = true,
   onFinish,
   onReadyToDisplay,
 }) => {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   const [hasFinished, setHasFinished] = useState(false);
-  const [videoEnded, setVideoEnded] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [animationCompleted, setAnimationCompleted] = useState(false);
   const isTransitioningRef = useRef(false);
+  const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialize expo-video player instance
-  const player = useVideoPlayer(splashVideoSource, (p) => {
-    p.loop = false;
-    p.muted = true;
-    p.play();
-  });
+  // Overlay fade-out animation via Reanimated
+  const overlayOpacity = useSharedValue(1);
+
+  const finishSplash = useCallback(() => {
+    setHasFinished(true);
+    onFinish();
+  }, [onFinish]);
 
   const startFadeOut = useCallback(() => {
     if (isTransitioningRef.current) return;
     isTransitioningRef.current = true;
 
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
+    if (safetyTimeoutRef.current) {
+      clearTimeout(safetyTimeoutRef.current);
+      safetyTimeoutRef.current = null;
     }
 
-    // Smooth fade-out transition into the underlying application
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 400,
-      useNativeDriver: true,
-    }).start(() => {
-      setHasFinished(true);
-      onFinish();
-    });
-  }, [fadeAnim, onFinish]);
-
-  // When video has ended and the underlying app data is ready, initiate smooth fade-out
-  useEffect(() => {
-    if (videoEnded && isAppReady) {
-      startFadeOut();
-    }
-  }, [videoEnded, isAppReady, startFadeOut]);
-
-  useEffect(() => {
-    // 1. Listen for video completion
-    const playToEndSub = player.addListener('playToEnd', () => {
-      setVideoEnded(true);
-    });
-
-    // 2. Listen for player readiness and errors
-    const statusSub = player.addListener('statusChange', ({ status, error }) => {
-      if (status === 'readyToPlay') {
-        onReadyToDisplay?.();
-      }
-      if (error) {
-        console.warn('[Spendz SplashScreen] Video playback error encountered:', error);
-        setVideoEnded(true);
+    // Smooth 350ms fade-out transition into the underlying application
+    overlayOpacity.value = withTiming(0, { duration: 350 }, (finished) => {
+      if (finished) {
+        runOnJS(finishSplash)();
       }
     });
+  }, [finishSplash, overlayOpacity]);
 
-    // 3. Fallback safety timer: video is ~10s. If anything delays playToEnd,
-    // ensure transition initiates so the user is never stuck.
-    timeoutRef.current = setTimeout(() => {
-      setVideoEnded(true);
-    }, 10500);
+  // Signal ready to display on mount to smoothly replace expo-splash-screen
+  useEffect(() => {
+    // Notify native splash that code-based splash is ready to be revealed
+    onReadyToDisplay?.();
+
+    // Safety timeout: Ensure splash screen dismisses even if an async resource hangs
+    safetyTimeoutRef.current = setTimeout(() => {
+      setAnimationCompleted(true);
+      if (isAppReady) {
+        startFadeOut();
+      }
+    }, 4500);
 
     return () => {
-      playToEndSub.remove();
-      statusSub.remove();
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+      if (safetyTimeoutRef.current) {
+        clearTimeout(safetyTimeoutRef.current);
       }
     };
-  }, [player, onReadyToDisplay]);
+  }, [onReadyToDisplay, isAppReady, startFadeOut]);
+
+  // When 5-phase logo animation completes and the app data/auth is ready, fade out smoothly
+  useEffect(() => {
+    if (animationCompleted && isAppReady) {
+      startFadeOut();
+    }
+  }, [animationCompleted, isAppReady, startFadeOut]);
+
+  const handleAnimationComplete = useCallback(() => {
+    setAnimationCompleted(true);
+  }, []);
 
   const handleTapToSkip = () => {
+    setAnimationCompleted(true);
     if (isAppReady) {
       startFadeOut();
-    } else {
-      setVideoEnded(true);
     }
   };
+
+  const overlayAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: overlayOpacity.value,
+    };
+  });
 
   if (hasFinished) {
     return null;
@@ -115,21 +114,21 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
         styles.overlay,
         {
           backgroundColor: colors.background,
-          opacity: fadeAnim,
         },
+        overlayAnimatedStyle,
       ]}
+      pointerEvents={hasFinished ? 'none' : 'auto'}
     >
       <TouchableOpacity
         activeOpacity={1}
         onPress={handleTapToSkip}
         style={styles.touchableContainer}
+        accessible={false}
       >
-        <VideoView
-          player={player}
-          nativeControls={false}
-          contentFit="contain"
-          surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
-          style={styles.videoView}
+        <LogoAnimation
+          onAnimationComplete={handleAnimationComplete}
+          isDark={isDark}
+          size={120}
         />
       </TouchableOpacity>
     </Animated.View>
@@ -139,14 +138,12 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     zIndex: 99999,
-    elevation: 99999,
+    elevation: Platform.OS === 'android' ? 99999 : undefined,
   },
   touchableContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  videoView: {
     width: '100%',
     height: '100%',
   },
