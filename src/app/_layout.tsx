@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Image, AppState } from 'react-native';
 import {
   useFonts,
   Inter_400Regular,
@@ -27,6 +27,7 @@ import { spacing, borderRadius } from '@/theme/spacing';
 import * as Linking from 'expo-linking';
 import { parseInviteCodeFromUrlOrInput } from '@/utils/inviteCode';
 import { initAlertPolyfill } from '@/utils/alert';
+import { AnimatedSplashScreen } from '@/components/splash/AnimatedSplashScreen';
 
 initAlertPolyfill();
 
@@ -80,6 +81,34 @@ export default function RootLayout() {
 
   const [initStatus, setInitStatus] = useState<'initializing' | 'ready' | 'error'>('initializing');
   const [initError, setInitError] = useState<string | null>(null);
+  const [isSplashComplete, setIsSplashComplete] = useState(false);
+  const lastBackgroundTime = useRef<number | null>(null);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'background') {
+        lastBackgroundTime.current = Date.now();
+      } else if (nextAppState === 'active') {
+        // Replay splash screen if returning after 30+ minutes in the background
+        if (lastBackgroundTime.current && Date.now() - lastBackgroundTime.current > 30 * 60 * 1000) {
+          setIsSplashComplete(false);
+        }
+        lastBackgroundTime.current = null;
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const handleSplashReady = useCallback(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
+
+  const handleSplashFinish = useCallback(() => {
+    setIsSplashComplete(true);
+  }, []);
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -132,8 +161,12 @@ export default function RootLayout() {
   }, [prepare]);
 
   useEffect(() => {
+    // Fallback: ensure native splash is hidden once app is initialized
     if (fontsLoaded && isDbReady && isHydrated && isAuthInitialized && initStatus === 'ready') {
-      SplashScreen.hideAsync().catch(() => {});
+      const fallbackTimer = setTimeout(() => {
+        SplashScreen.hideAsync().catch(() => {});
+      }, 3000);
+      return () => clearTimeout(fallbackTimer);
     }
   }, [fontsLoaded, isDbReady, isHydrated, isAuthInitialized, initStatus]);
 
@@ -245,32 +278,13 @@ export default function RootLayout() {
           </View>
         )}
 
-        {/* Initializing / Loading Overlay */}
-        {isLoading && initStatus !== 'error' && (
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              styles.centerContainer,
-              { backgroundColor: themeColors.background, zIndex: 999 },
-            ]}
-          >
-            <Image
-              source={require('@/assets/images/spendz-logo.png')}
-              style={styles.loadingLogo}
-              resizeMode="contain"
-            />
-            <Text style={[styles.brandTitle, { color: themeColors.textPrimary }]}>
-              Spendz
-            </Text>
-            <Text style={[styles.brandSubtitle, { color: themeColors.textSecondary }]}>
-              Checking session & preparing data...
-            </Text>
-            <ActivityIndicator
-              size="small"
-              color={themeColors.accent}
-              style={styles.spinner}
-            />
-          </View>
+        {/* Animated Splash Screen Overlay: primary opening animation on every launch */}
+        {!isSplashComplete && (
+          <AnimatedSplashScreen
+            isAppReady={!isLoading && initStatus === 'ready'}
+            onReadyToDisplay={handleSplashReady}
+            onFinish={handleSplashFinish}
+          />
         )}
       </SafeAreaProvider>
     </GestureHandlerRootView>
